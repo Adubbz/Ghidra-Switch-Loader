@@ -1,1 +1,4 @@
 eclipse/
+.gradle/
+dist/
+build/
