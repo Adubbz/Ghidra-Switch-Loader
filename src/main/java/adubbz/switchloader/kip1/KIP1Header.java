@@ -9,6 +9,7 @@ package adubbz.switchloader.kip1;
 
 import java.io.IOException;
 
+import adubbz.switchloader.SectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 
@@ -53,24 +54,24 @@ public class KIP1Header
         }
     }
     
-    public KIP1SectionHeader getSectionHeader(KIP1SectionType type)
+    public KIP1SectionHeader getSectionHeader(SectionType type)
     {
         return this.sectionHeaders[type.ordinal()];
     }
     
-    public long getSectionFileOffset(KIP1SectionType type)
+    public long getSectionFileOffset(SectionType type)
     {
-        if (type == KIP1SectionType.TEXT)
+        if (type == SectionType.TEXT)
             return 0x100;
         else
         {
-            KIP1SectionType prevType = KIP1SectionType.values()[type.ordinal() - 1];
+            SectionType prevType = SectionType.values()[type.ordinal() - 1];
             KIP1SectionHeader prevHeader = this.getSectionHeader(prevType);
             return this.getSectionFileOffset(prevType) + prevHeader.getCompressedSize();
         }
     }
     
-    public boolean isSectionCompressed(KIP1SectionType type)
+    public boolean isSectionCompressed(SectionType type)
     {
         int index = type.ordinal();
         

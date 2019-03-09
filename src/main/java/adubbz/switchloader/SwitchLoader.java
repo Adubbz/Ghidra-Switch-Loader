@@ -14,6 +14,8 @@ import java.util.List;
 
 import adubbz.switchloader.kip1.KIP1Header;
 import adubbz.switchloader.kip1.KIP1ProgramBuilder;
+import adubbz.switchloader.nso.NSO0Header;
+import adubbz.switchloader.nso.NSO0ProgramBuilder;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
@@ -38,7 +40,8 @@ import ghidra.util.task.TaskMonitor;
 public class SwitchLoader extends BinaryLoader 
 {
     public static final String SWITCH_NAME = "Nintendo Switch Binary";
-
+    private BinaryType binaryType;
+    
     @Override
     public Collection<LoadSpec> findSupportedLoadSpecs(ByteProvider provider) throws IOException 
     {
@@ -46,13 +49,19 @@ public class SwitchLoader extends BinaryLoader
         BinaryReader reader = new BinaryReader(provider, true);
         String magic = reader.readNextAsciiString(4);
         
+        reader.setPointerIndex(0);
+        
         if (magic.equals("KIP1")) 
         {
-            loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair("AARCH64:LE:64:v8A", "default"), true));
-        
-            reader.setPointerIndex(0);
-            KIP1Header header = new KIP1Header(reader);
+            this.binaryType = BinaryType.KIP1;
         }
+        else if (magic.equals("NSO0"))
+        {
+            this.binaryType = BinaryType.NSO0;
+        }
+        else return loadSpecs;
+        
+        loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair("AARCH64:LE:64:v8A", "default"), true));
         
         return loadSpecs;
     }
@@ -95,9 +104,17 @@ public class SwitchLoader extends BinaryLoader
             throws IOException
     {
         BinaryReader reader = new BinaryReader(provider, true);
-        KIP1Header header = new KIP1Header(reader);
         
-        KIP1ProgramBuilder.loadKIP1(header, provider, program, memoryConflictHandler, monitor);
+        if (this.binaryType == BinaryType.KIP1)
+        {
+            KIP1Header header = new KIP1Header(reader);
+            KIP1ProgramBuilder.loadKIP1(header, provider, program, memoryConflictHandler, monitor);
+        }
+        else if (this.binaryType == BinaryType.NSO0)
+        {
+            NSO0Header header = new NSO0Header(reader);
+            NSO0ProgramBuilder.loadNSO0(header, provider, program, memoryConflictHandler, monitor);
+        }
         
         return true;
     }
@@ -118,5 +135,10 @@ public class SwitchLoader extends BinaryLoader
     public String getName() 
     {
         return SWITCH_NAME;
+    }
+    
+    private static enum BinaryType
+    {
+        KIP1, NSO0
     }
 }
