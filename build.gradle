@@ -14,20 +14,76 @@
 // application.gradle.version property in <GHIDRA_INSTALL_DIR>/Ghidra/application.properties
 // for the correction version of Gradle to use for the Ghidra installation you specify.
 
+import org.apache.tools.ant.filters.ReplaceTokens
+
 //----------------------START "DO NOT MODIFY" SECTION------------------------------
 def ghidraInstallDir
 
 if (System.env.GHIDRA_INSTALL_DIR) {
-	ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
+    ghidraInstallDir = System.env.GHIDRA_INSTALL_DIR
 }
 else if (project.hasProperty("GHIDRA_INSTALL_DIR")) {
-	ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
+    ghidraInstallDir = project.getProperty("GHIDRA_INSTALL_DIR")
 }
 
 if (ghidraInstallDir) {
-	apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
+    apply from: new File(ghidraInstallDir).getCanonicalPath() + "/support/buildExtension.gradle"
 }
 else {
-	throw new GradleException("GHIDRA_INSTALL_DIR is not defined!")
+    throw new GradleException("GHIDRA_INSTALL_DIR is not defined!")
 }
 //----------------------END "DO NOT MODIFY" SECTION-------------------------------
+
+def DISTRIBUTION_DIR = file("dist")
+def PATH_IN_ZIP = "${project.name}"
+
+task buildExtension (type: Zip, overwrite: true) {
+    baseName "${project.name}"
+    extension 'zip'
+    destinationDir DISTRIBUTION_DIR
+    version ''
+    
+    // Make sure that we don't try to copy the same file with the same path into the
+    // zip (this can happen!)
+    duplicatesStrategy 'exclude'
+    
+    // This filtered property file copy must appear before the general 
+    // copy to ensure that it is prefered over the unmodified file
+    File propFile = new File(project.projectDir, "extension.properties")
+    from (propFile) {
+        String version = "${ghidra_version}"
+        String name = "${project.name}"
+        filter (ReplaceTokens, tokens: [extversion: version])
+        filter (ReplaceTokens, tokens: [extname: name])
+        into PATH_IN_ZIP
+    }
+    
+    from (project.jar) {
+        into PATH_IN_ZIP + "/lib"
+    } 
+        
+    from (project.projectDir) {
+        exclude 'build/**'
+        exclude '*.gradle'
+        exclude 'certification.manifest'
+        exclude 'dist/**'
+        exclude 'bin/**'
+        exclude 'src/**'
+        exclude '.gradle/**'
+        exclude 'gradle/**'
+        exclude 'gradlew'
+        exclude 'gradlew.bat'
+        exclude '.classpath'
+        exclude '.project'
+        exclude '.settings/**'
+        exclude 'developer_scripts'
+        exclude '.antProperties.xml'
+        exclude 'eclipse/**'
+        
+        into PATH_IN_ZIP
+    }
+
+    doLast {
+        println "\nCreated " + baseName + "." + extension + " in " + destinationDir
+    }
+}

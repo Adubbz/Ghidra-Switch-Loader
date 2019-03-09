@@ -101,9 +101,7 @@ public class KIP1ProgramBuilder
         
         if (this.kip1.isSectionCompressed(KIP1SectionType.DATA))
         {
-            Msg.info(this, "KIP1 Data Offset: " + this.kip1.getSectionFileOffset(KIP1SectionType.DATA));
             byte[] compressedData = this.provider.readBytes(this.kip1.getSectionFileOffset(KIP1SectionType.DATA), dataHeader.getCompressedSize());
-            ByteUtil.logBytes(compressedData);
             ByteUtil.kip1BlzDecompress(this.data, compressedData);
         }
         else
