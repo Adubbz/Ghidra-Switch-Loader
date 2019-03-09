@@ -1,6 +1,6 @@
 ## Ghidra Switch Loader
 
-A WIP loader for Ghidra intended to support a variety of Nintendo Switch file formats. Please note that as of writing, only KIP1s (both compressed and uncompressed) are supported. This will be extended soon, and I intend on matching the functionality of the IDA loader as best as possible.
+A loader for Ghidra intended to support a variety of Nintendo Switch file formats. Improvements are still being made, and I intend to match the functionality of the IDA loader as best as possible.
 
 ## Building
 
