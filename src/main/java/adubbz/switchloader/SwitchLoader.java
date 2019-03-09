@@ -14,8 +14,8 @@ import java.util.List;
 
 import adubbz.switchloader.kip1.KIP1Header;
 import adubbz.switchloader.kip1.KIP1ProgramBuilder;
-import adubbz.switchloader.nso.NSO0Header;
-import adubbz.switchloader.nso.NSO0ProgramBuilder;
+import adubbz.switchloader.nso0.NSO0Header;
+import adubbz.switchloader.nso0.NSO0ProgramBuilder;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;

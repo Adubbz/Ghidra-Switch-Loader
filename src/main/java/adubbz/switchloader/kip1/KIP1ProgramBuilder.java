@@ -12,9 +12,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 
-import adubbz.switchloader.ByteUtil;
-import adubbz.switchloader.SectionType;
-import adubbz.switchloader.SwitchProgramBuilder;
+import adubbz.switchloader.common.SectionType;
+import adubbz.switchloader.common.SwitchProgramBuilder;
+import adubbz.switchloader.util.ByteUtil;
 import ghidra.app.util.MemoryBlockUtil;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MemoryConflictHandler;

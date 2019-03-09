@@ -9,7 +9,7 @@ package adubbz.switchloader.kip1;
 
 import java.io.IOException;
 
-import adubbz.switchloader.SectionType;
+import adubbz.switchloader.common.SectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 
