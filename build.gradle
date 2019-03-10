@@ -41,8 +41,13 @@ repositories {
     mavenCentral()
 }
 
+configurations {
+    localDeps
+}
+
 dependencies {
-    compile group: 'org.lz4', name: 'lz4-java', version: '1.5.1'
+    localDeps group: 'org.lz4', name: 'lz4-java', version: '1.5.1'
+    compile configurations.localDeps
 }
 
 task buildExtension (type: Zip, overwrite: true) {
@@ -68,7 +73,12 @@ task buildExtension (type: Zip, overwrite: true) {
     
     from (project.jar) {
         into PATH_IN_ZIP + "/lib"
-    } 
+    }
+
+    // Copy lz4 and any other dependencies that only we rely on
+    from (configurations.localDeps) {
+        into PATH_IN_ZIP + "/lib"
+    }
         
     from (project.projectDir) {
         exclude 'build/**'
