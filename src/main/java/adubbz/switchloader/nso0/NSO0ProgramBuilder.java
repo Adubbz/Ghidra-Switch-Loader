@@ -49,23 +49,33 @@ public class NSO0ProgramBuilder extends SwitchProgramBuilder
         NSO0SectionHeader rodataHeader = this.nso0.getSectionHeader(SectionType.RODATA);
         NSO0SectionHeader dataHeader = this.nso0.getSectionHeader(SectionType.DATA);
         
-        this.text = new byte[textHeader.getDecompressedSize()];
-        this.rodata = new byte[rodataHeader.getDecompressedSize()];
-        this.data = new byte[dataHeader.getDecompressedSize()];
+        this.textOffset = textHeader.getMemoryOffset();
+        this.rodataOffset = rodataHeader.getMemoryOffset();
+        this.dataOffset = dataHeader.getMemoryOffset();
+        this.textSize = textHeader.getDecompressedSize();
+        this.rodataSize = rodataHeader.getDecompressedSize();
+        this.dataSize = dataHeader.getDecompressedSize();
+        
+        // The data section is last, so we use its offset + decompressed size
+        this.full = new byte[this.dataOffset + this.dataSize];
         
         byte[] compressedText = this.provider.readBytes(textHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.TEXT));
-        decompressor.decompress(compressedText, this.text);
+        byte[] decompressedText = new byte[this.textSize];
+        decompressor.decompress(compressedText, decompressedText);
+        System.arraycopy(decompressedText, 0, this.full, this.textOffset, this.textSize);
         
         byte[] compressedRodata = this.provider.readBytes(rodataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.RODATA));
-        decompressor.decompress(compressedRodata, this.rodata);
+        byte[] decompressedRodata = new byte[this.rodataSize];
+        decompressor.decompress(compressedRodata, decompressedRodata);
+        System.arraycopy(decompressedRodata, 0, this.full, this.rodataOffset, this.rodataSize);
         
         byte[] compressedData = this.provider.readBytes(dataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.DATA));
-        decompressor.decompress(compressedData, this.data);
+        byte[] decompressedData = new byte[this.dataSize];
+        decompressor.decompress(compressedData, decompressedData);
+        System.arraycopy(decompressedData, 0, this.full, this.dataOffset, this.dataSize);
         
         this.textOffset = textHeader.getMemoryOffset();
         this.rodataOffset = rodataHeader.getMemoryOffset();
         this.dataOffset = dataHeader.getMemoryOffset();
-        this.bssOffset = this.dataOffset + this.data.length; // TODO: This is wrong. It should be read from the MOD0
-        this.bssSize = this.nso0.getBssSize();
     }
 }
