@@ -11,6 +11,7 @@ import java.io.IOException;
 import adubbz.switchloader.common.SectionType;
 import adubbz.switchloader.common.SwitchProgramBuilder;
 import adubbz.switchloader.util.ByteUtil;
+import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.program.model.address.AddressOutOfBoundsException;
@@ -57,25 +58,22 @@ public class NSO0ProgramBuilder extends SwitchProgramBuilder
         this.dataSize = dataHeader.getDecompressedSize();
         
         // The data section is last, so we use its offset + decompressed size
-        this.full = new byte[this.dataOffset + this.dataSize];
+        byte[] full = new byte[this.dataOffset + this.dataSize];
         
-        byte[] compressedText = this.provider.readBytes(textHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.TEXT));
+        byte[] compressedText = this.fileByteProvider.readBytes(textHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.TEXT));
         byte[] decompressedText = new byte[this.textSize];
         decompressor.decompress(compressedText, decompressedText);
-        System.arraycopy(decompressedText, 0, this.full, this.textOffset, this.textSize);
+        System.arraycopy(decompressedText, 0, full, this.textOffset, this.textSize);
         
-        byte[] compressedRodata = this.provider.readBytes(rodataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.RODATA));
+        byte[] compressedRodata = this.fileByteProvider.readBytes(rodataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.RODATA));
         byte[] decompressedRodata = new byte[this.rodataSize];
         decompressor.decompress(compressedRodata, decompressedRodata);
-        System.arraycopy(decompressedRodata, 0, this.full, this.rodataOffset, this.rodataSize);
+        System.arraycopy(decompressedRodata, 0, full, this.rodataOffset, this.rodataSize);
         
-        byte[] compressedData = this.provider.readBytes(dataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.DATA));
+        byte[] compressedData = this.fileByteProvider.readBytes(dataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.DATA));
         byte[] decompressedData = new byte[this.dataSize];
         decompressor.decompress(compressedData, decompressedData);
-        System.arraycopy(decompressedData, 0, this.full, this.dataOffset, this.dataSize);
-        
-        this.textOffset = textHeader.getMemoryOffset();
-        this.rodataOffset = rodataHeader.getMemoryOffset();
-        this.dataOffset = dataHeader.getMemoryOffset();
+        System.arraycopy(decompressedData, 0, full, this.dataOffset, this.dataSize);
+        this.memoryByteProvider = new ByteArrayProvider(full);
     }
 }

@@ -22,22 +22,28 @@ public class MOD0Header
     private int ehFrameHdrEndOffset;
     private int runtimeModuleOffset;
     
-    public MOD0Header(BinaryReader reader, int startOffset)
+    public MOD0Header(BinaryReader reader, int readerOffset, int mod0StartOffset)
     {
-        this.readHeader(reader, startOffset);
+        long prevPointerIndex = reader.getPointerIndex();
+        
+        reader.setPointerIndex(readerOffset);
+        this.readHeader(reader, mod0StartOffset);
+        
+        // Restore the previous pointer index
+        reader.setPointerIndex(prevPointerIndex);
     }
     
-    private void readHeader(BinaryReader reader, int startOffset)
+    private void readHeader(BinaryReader reader, int mod0StartOffset)
     {
         try 
         {
             this.magic = reader.readNextAsciiString(4);
-            this.dynamicOffset = startOffset + reader.readNextInt();
-            this.bssStartOffset = startOffset + reader.readNextInt();
-            this.bssEndOffset = startOffset + reader.readNextInt();
-            this.ehFrameHdrStartOffset = startOffset + reader.readNextInt();
-            this.ehFrameHdrEndOffset = startOffset + reader.readNextInt();
-            this.runtimeModuleOffset = startOffset + reader.readNextInt();
+            this.dynamicOffset = mod0StartOffset + reader.readNextInt();
+            this.bssStartOffset = mod0StartOffset + reader.readNextInt();
+            this.bssEndOffset = mod0StartOffset + reader.readNextInt();
+            this.ehFrameHdrStartOffset = mod0StartOffset + reader.readNextInt();
+            this.ehFrameHdrEndOffset = mod0StartOffset + reader.readNextInt();
+            this.runtimeModuleOffset = mod0StartOffset + reader.readNextInt();
         } 
         catch (IOException e) 
         {

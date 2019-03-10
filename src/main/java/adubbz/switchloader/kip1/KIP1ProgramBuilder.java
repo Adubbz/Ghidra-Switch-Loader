@@ -12,6 +12,7 @@ import java.io.IOException;
 import adubbz.switchloader.common.SectionType;
 import adubbz.switchloader.common.SwitchProgramBuilder;
 import adubbz.switchloader.util.ByteUtil;
+import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.program.model.address.AddressOutOfBoundsException;
@@ -56,49 +57,49 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         this.dataSize = dataHeader.getDecompressedSize();
         
         // The data section is last, so we use its offset + decompressed size
-        this.full = new byte[this.dataOffset + this.dataSize];
-        
+        byte[] full = new byte[this.dataOffset + this.dataSize];
         byte[] decompressedText;
         byte[] decompressedRodata;
         byte[] decompressedData;
         
         if (this.kip1.isSectionCompressed(SectionType.TEXT))
         {
-            byte[] compressedText = this.provider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), textHeader.getCompressedSize());
+            byte[] compressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), textHeader.getCompressedSize());
             decompressedText = new byte[this.textSize];
             ByteUtil.kip1BlzDecompress(decompressedText, compressedText);
         }
         else
         {
-            decompressedText = this.provider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), this.textSize);
+            decompressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), this.textSize);
         }
         
-        System.arraycopy(decompressedText, 0, this.full, this.textOffset, this.textSize);
+        System.arraycopy(decompressedText, 0, full, this.textOffset, this.textSize);
         
         if (this.kip1.isSectionCompressed(SectionType.RODATA))
         {
-            byte[] compressedRodata = this.provider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), rodataHeader.getCompressedSize());
+            byte[] compressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), rodataHeader.getCompressedSize());
             decompressedRodata = new byte[this.rodataSize];
             ByteUtil.kip1BlzDecompress(decompressedRodata, compressedRodata);
         }
         else
         {
-            decompressedRodata = this.provider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), this.rodataSize);
+            decompressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), this.rodataSize);
         }
         
-        System.arraycopy(decompressedRodata, 0, this.full, this.rodataOffset, this.rodataSize);
+        System.arraycopy(decompressedRodata, 0, full, this.rodataOffset, this.rodataSize);
         
         if (this.kip1.isSectionCompressed(SectionType.DATA))
         {
-            byte[] compressedData = this.provider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), dataHeader.getCompressedSize());
+            byte[] compressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), dataHeader.getCompressedSize());
             decompressedData = new byte[this.dataSize];
             ByteUtil.kip1BlzDecompress(decompressedData, compressedData);
         }
         else
         {
-            decompressedData = this.provider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), this.dataSize);
+            decompressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), this.dataSize);
         }
         
-        System.arraycopy(decompressedData, 0, this.full, this.dataOffset, this.dataSize);
+        System.arraycopy(decompressedData, 0, full, this.dataOffset, this.dataSize);
+        this.memoryByteProvider = new ByteArrayProvider(full);
     }
 }
