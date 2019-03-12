@@ -82,10 +82,7 @@ public class InitializedSectionManager
         
         this.isFinalized = true;
         
-        this.sections.sort((section1, section2) ->
-        {
-          return section1.originalAddressRange.getMinAddress().compareTo(section2.originalAddressRange.getMinAddress());  
-        });
+        List<SectionEntry> sectionEntries = new ArrayList<>();
         
         for (Section section : this.sections)
         {
@@ -94,12 +91,49 @@ public class InitializedSectionManager
                 String suffix = i == 0 ? "" : "." + i;
                 AddressRange range = section.addresses.get(i);
                 
-                Msg.info(this, String.format("Finalizing block %s 0x%X-0x%X", (section.name + suffix), range.getMinAddress().getUnsignedOffset(), range.getMinAddress().getUnsignedOffset() + range.getLength() - 1));
-                section.dataInput.mark(Integer.MAX_VALUE);
-                section.dataInput.skip(range.getMinAddress().getUnsignedOffset() - section.originalAddressRange.getMinAddress().getUnsignedOffset());
-                this.mbu.createInitializedBlock(section.name + suffix, range.getMinAddress(), section.dataInput, range.getLength() - 1, "", null, section.read, section.write, section.execute, this.monitor);
-                section.dataInput.reset();
+                sectionEntries.add(new SectionEntry(section.name + suffix, range.getMinAddress(), section.originalAddressRange.getMinAddress(), section.dataInput, range.getLength() - 1, section.read, section.write, section.execute));
             }
+        }
+        
+        sectionEntries.sort((section1, section2) ->
+        {
+            return section1.startAddress.compareTo(section2.startAddress);  
+        });
+        
+        for (SectionEntry entry : sectionEntries)
+        {
+            Msg.info(this, String.format("Finalizing block %s 0x%X-0x%X", entry.name, entry.startAddress.getUnsignedOffset(), entry.startAddress.getUnsignedOffset() + entry.dataSize));
+            entry.dataInput.mark(Integer.MAX_VALUE);
+            entry.dataInput.skip(entry.startAddress.getUnsignedOffset() - entry.dataStartAddress.getUnsignedOffset());
+            this.mbu.createInitializedBlock(entry.name, entry.startAddress, entry.dataInput, entry.dataSize, "", null, entry.read, entry.write, entry.execute, this.monitor);
+            entry.dataInput.reset();
+        }
+    }
+    
+    /***
+     * A container for the finalized info needed to create a new section.
+     */
+    private class SectionEntry
+    {
+        private String name;
+        private Address startAddress;
+        private Address dataStartAddress;
+        private InputStream dataInput;
+        private long dataSize;
+        private boolean read;
+        private boolean write;
+        private boolean execute;
+        
+        public SectionEntry(String name, Address startAddress, Address dataStartAddress, InputStream dataInput, long dataSize, boolean read, boolean write, boolean execute)
+        {
+            this.name = name;
+            this.startAddress = startAddress;
+            this.dataStartAddress = dataStartAddress;
+            this.dataInput = dataInput;
+            this.dataSize = dataSize;
+            this.read = read;
+            this.write = write;
+            this.execute = execute;
         }
     }
     
