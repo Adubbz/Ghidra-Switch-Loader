@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import adubbz.switchloader.util.ByteUtil;
@@ -24,14 +25,22 @@ import ghidra.app.util.bin.format.elf.ElfConstants;
 import ghidra.app.util.bin.format.elf.ElfDynamicTable;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
 import ghidra.app.util.bin.format.elf.ElfHeader;
+import ghidra.app.util.bin.format.elf.ElfSectionHeader;
+import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
+import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
 import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
 import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.framework.store.LockException;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSpace;
+import ghidra.program.model.data.DataTypeConflictException;
+import ghidra.program.model.data.TerminatedStringDataType;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
 import ghidra.util.exception.NotFoundException;
 import ghidra.util.task.TaskMonitor;
@@ -43,6 +52,9 @@ public abstract class SwitchProgramBuilder
     protected BinaryReader memoryBinaryReader;
     protected Program program;
     protected MemoryBlockUtil mbu;
+    
+    long baseAddress;
+    protected AddressSpace aSpace;
     protected InitializedSectionManager sectionManager;
 
     protected int textOffset;
@@ -53,6 +65,7 @@ public abstract class SwitchProgramBuilder
     protected int dataSize;
     
     protected MOD0Header mod0;
+    protected ElfHeader dummyElfHeader;
     protected ElfDynamicTable dynamicTable;
     
     protected SwitchProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
@@ -64,14 +77,14 @@ public abstract class SwitchProgramBuilder
     
     protected void load(TaskMonitor monitor)
     {
-        long baseAddress = 0x7100000000L;
-        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
-        this.sectionManager = new InitializedSectionManager(monitor, this.mbu, aSpace, baseAddress);
+        this.baseAddress = 0x7100000000L;
+        this.aSpace = program.getAddressFactory().getDefaultAddressSpace();
+        this.sectionManager = new InitializedSectionManager(monitor, this.mbu, this.aSpace, this.baseAddress);
         
         try 
         {
             // Set the base address
-            this.program.setImageBase(aSpace.getAddress(baseAddress), true);
+            this.program.setImageBase(aSpace.getAddress(this.baseAddress), true);
             this.loadDefaultSegments(monitor);
             this.memoryBinaryReader = new BinaryReader(this.memoryByteProvider, true);
             
@@ -86,9 +99,10 @@ public abstract class SwitchProgramBuilder
             
             // Load MOD0
             this.loadMod0();
-        
+            this.dummyElfHeader = new DummyElfHeader();
+            
             // Create the dynamic table and its memory block
-            this.dynamicTable = ElfDynamicTable.createDynamicTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), new DummyElfHeader(), this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
+            this.dynamicTable = ElfDynamicTable.createDynamicTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), this.dummyElfHeader, this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
             this.sectionManager.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), this.dynamicTable.getLength(), true, true, false);
 
             // Create dynamic sections
@@ -99,14 +113,13 @@ public abstract class SwitchProgramBuilder
             this.optionallyCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
             this.optionallyCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
             
-            // processStringTables
-            
             this.sectionManager.finalizeSections();
+            this.parseStringTable();
             
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
         } 
-        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException e) 
+        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | CodeUnitInsertionException | DataTypeConflictException e) 
         {
             
         }
@@ -118,6 +131,47 @@ public abstract class SwitchProgramBuilder
     {
         int mod0Offset = this.memoryBinaryReader.readInt(this.textOffset + 4);
         this.mod0 = new MOD0Header(this.memoryBinaryReader, mod0Offset, mod0Offset);
+    }
+    
+    protected void parseStringTable() throws IOException, AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException
+    {
+        long dynamicStringTableAddr = -1;
+        long dynamicStringTableSize = -1;
+        
+        try 
+        {
+            dynamicStringTableAddr = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRTAB);
+            dynamicStringTableSize = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRSZ);
+        }
+        catch (NotFoundException e) {
+            Msg.warn(this, "Binary does not contain a dynamic string table (DT_STRTAB)");
+            return;
+        }
+
+        long stringTableAddrOffset = this.baseAddress + dynamicStringTableAddr;
+        ElfStringTable stringTable = ElfStringTable.createElfStringTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), this.dummyElfHeader,
+                null, dynamicStringTableAddr, stringTableAddrOffset, dynamicStringTableSize);
+        
+        Address address = this.aSpace.getAddress(stringTableAddrOffset);
+        Address end = address.addNoWrap(stringTable.getLength() - 1);
+        
+        while (address.compareTo(end) < 0) 
+        {
+            int length = createString(address);
+            address = address.addNoWrap(length);
+        }
+    }
+    
+    protected int createString(Address address) throws CodeUnitInsertionException, DataTypeConflictException 
+    {
+        Data d = this.program.getListing().getDataAt(address);
+        
+        if (d == null || !TerminatedStringDataType.dataType.isEquivalent(d.getDataType())) 
+        {
+            d = this.program.getListing().createData(address, TerminatedStringDataType.dataType, -1);
+        }
+        
+        return d.getLength();
     }
     
     protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException
