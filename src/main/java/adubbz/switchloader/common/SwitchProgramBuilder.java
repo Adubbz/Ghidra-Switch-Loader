@@ -42,6 +42,7 @@ public abstract class SwitchProgramBuilder
     protected BinaryReader memoryBinaryReader;
     protected Program program;
     protected MemoryBlockUtil mbu;
+    protected InitializedSectionManager sectionManager;
 
     protected int textOffset;
     protected int rodataOffset;
@@ -64,6 +65,7 @@ public abstract class SwitchProgramBuilder
     {
         long baseAddress = 0x7100000000L;
         AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
+        this.sectionManager = new InitializedSectionManager(monitor, this.mbu, aSpace, baseAddress);
         
         try 
         {
@@ -77,22 +79,26 @@ public abstract class SwitchProgramBuilder
             InputStream rodataInputStream = this.memoryByteProvider.getInputStream(this.rodataOffset);
             InputStream dataInputStream = this.memoryByteProvider.getInputStream(this.dataOffset);
             
-            this.mbu.createInitializedBlock(".text", aSpace.getAddress(baseAddress + this.textOffset), textInputStream, this.textSize, "", null, true, false, true, monitor);
-            this.mbu.createInitializedBlock(".rodata", aSpace.getAddress(baseAddress + this.rodataOffset), rodataInputStream, this.rodataSize, "", null, true, false, false, monitor);
-            this.mbu.createInitializedBlock(".data", aSpace.getAddress(baseAddress + this.dataOffset), dataInputStream, this.dataSize, "", null, true, true, false, monitor);
+            this.sectionManager.addSection(".text", this.textOffset, textInputStream, this.textSize, true, false, true);
+            this.sectionManager.addSection(".rodata", this.rodataOffset, rodataInputStream, this.rodataSize, true, false, false);
+            this.sectionManager.addSection(".data", this.dataOffset, dataInputStream, this.dataSize, true, true, false);
             
-            // Load MOD0 to create the BSS
+            // Load MOD0
             this.loadMod0();
-            this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
         
             // Create the dynamic table and its memory block
             this.dynamicTable = ElfDynamicTable.createDynamicTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), new DummyElfHeader(), this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
-            this.mbu.createInitializedBlock(".dynamic", aSpace.getAddress(baseAddress + this.mod0.getDynamicOffset()), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), this.dynamicTable.getLength(), "", null, true, true, false, monitor);
+            this.sectionManager.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), (int)this.dynamicTable.getLength(), true, true, false);
             
-            // TODO: Memory block conflict resolution
+            Msg.info(this, "MOD0 Dynamic Offset: " + this.mod0.getDynamicOffset());
             
             // Create sections
             // processStringTables
+            
+            this.sectionManager.finalizeSections();
+            
+            // Create BSS
+            this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
         } 
         catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException e) 
         {
