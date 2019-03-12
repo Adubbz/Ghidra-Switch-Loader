@@ -128,7 +128,10 @@ public abstract class SwitchProgramBuilder
             long size = this.dynamicTable.getDynamicValue(sizeType);
             
             if (size > 0)
+            {
+                Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
                 this.sectionManager.addSectionInheritPerms(name, offset, this.memoryByteProvider.getInputStream(offset), size);
+            }
         }
     }
     

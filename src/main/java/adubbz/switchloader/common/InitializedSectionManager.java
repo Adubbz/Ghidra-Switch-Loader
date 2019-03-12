@@ -94,9 +94,10 @@ public class InitializedSectionManager
                 String suffix = i == 0 ? "" : "." + i;
                 AddressRange range = section.addresses.get(i);
                 
+                Msg.info(this, String.format("Finalizing block %s 0x%X-0x%X", (section.name + suffix), range.getMinAddress().getUnsignedOffset(), range.getMinAddress().getUnsignedOffset() + range.getLength() - 1));
                 section.dataInput.mark(Integer.MAX_VALUE);
                 section.dataInput.skip(range.getMinAddress().getUnsignedOffset() - section.originalAddressRange.getMinAddress().getUnsignedOffset());
-                this.mbu.createInitializedBlock(section.name + suffix, range.getMinAddress(), section.dataInput, range.getLength(), "", null, section.read, section.write, section.execute, this.monitor);
+                this.mbu.createInitializedBlock(section.name + suffix, range.getMinAddress(), section.dataInput, range.getLength() - 1, "", null, section.read, section.write, section.execute, this.monitor);
                 section.dataInput.reset();
             }
         }
@@ -160,6 +161,11 @@ public class InitializedSectionManager
             for (var entry : overlapMap.entrySet())
             {
                overlapMap.put(entry.getKey(), this.mergeOverlappingRanges(entry.getValue()));
+               
+               /*for (AddressRange overlapRange : entry.getValue())
+               {
+                   Msg.info(this, String.format("Overlap between %s 0x%X-0x%X and %s 0x%X-0x%X", this.name, entry.getKey().getMinAddress().getUnsignedOffset(), entry.getKey().getMaxAddress().getUnsignedOffset(), section.name, overlapRange.getMinAddress().getUnsignedOffset(), overlapRange.getMaxAddress().getUnsignedOffset()));   
+               }*/
             }
             
             return overlapMap;
@@ -187,20 +193,20 @@ public class InitializedSectionManager
                 
                 while (!overlaps.isEmpty())
                 {
-                    long endOffset = overlappedRange.getMaxAddress().previous().getUnsignedOffset();
-                    AddressRange smallestOverlapStartRange = null;
+                    long endOffset = overlappedRange.getMaxAddress().getUnsignedOffset();
+                    AddressRange firstOverlapRange = null;
                     
                     for (AddressRange overlap : overlaps)
                     {
-                        if (overlap.getMinAddress().getUnsignedOffset() <= addrSpace.getAddress(endOffset).next().getUnsignedOffset())
+                        if (overlap.getMinAddress().getUnsignedOffset() <= addrSpace.getAddress(endOffset).getUnsignedOffset())
                         {
                             // End before the overlap
-                            endOffset = overlap.getMinAddress().previous().getUnsignedOffset();
-                            smallestOverlapStartRange = overlap;
+                            endOffset = overlap.getMinAddress().getUnsignedOffset();
+                            firstOverlapRange = overlap;
                         }
                     }
                     
-                    if (smallestOverlapStartRange == null)
+                    if (firstOverlapRange == null)
                         throw new RuntimeException("Failed to find smallest overlap start range");
                     
                     if (endOffset - startOffset > 0)
@@ -209,8 +215,8 @@ public class InitializedSectionManager
                     }
                     
                     // Start again after the overlap
-                    startOffset = smallestOverlapStartRange.getMaxAddress().next().getUnsignedOffset();
-                    overlaps.remove(smallestOverlapStartRange);
+                    startOffset = firstOverlapRange.getMaxAddress().getUnsignedOffset();
+                    overlaps.remove(firstOverlapRange);
                 }
                 
                 // Add on the data after the last overlap
