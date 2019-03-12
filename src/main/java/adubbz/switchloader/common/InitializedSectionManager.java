@@ -13,6 +13,7 @@ import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.address.AddressRangeImpl;
 import ghidra.program.model.address.AddressSpace;
+import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 
 public class InitializedSectionManager 
@@ -33,7 +34,7 @@ public class InitializedSectionManager
         this.baseAddress = baseAddress;
     }
     
-    public void addSection(String name, int addressOffset, InputStream dataInput, int dataSize, boolean read, boolean write, boolean execute)
+    public void addSection(String name, long addressOffset, InputStream dataInput, long dataSize, boolean read, boolean write, boolean execute)
     {
         if (this.isFinalized)
             throw new RuntimeException("Attempted to add a new section when they are already finalized!");
@@ -52,12 +53,39 @@ public class InitializedSectionManager
         this.sections.add(newSection);
     }
     
+    public void addSectionInheritPerms(String name, long addressOffset, InputStream dataInput, long dataSize)
+    {
+        if (this.isFinalized)
+            throw new RuntimeException("Attempted to add a new section when they are already finalized!");
+        
+        Section newSection = new Section(name, addressOffset, dataInput, dataSize, false, false, false);
+        
+        // Go through all previous sections and adjust them
+        for (Section section : this.sections)
+        {
+            if (section.overlaps(newSection).isEmpty())
+                continue;
+
+            section.accomodate(newSection);
+            newSection.read = section.read;
+            newSection.write = section.write;
+            newSection.execute = section.execute;
+        }
+        
+        this.sections.add(newSection);
+    }
+    
     public void finalizeSections() throws IOException, AddressOverflowException
     {
         if (this.isFinalized)
             throw new RuntimeException("Sections are already finalized!");
         
         this.isFinalized = true;
+        
+        this.sections.sort((section1, section2) ->
+        {
+          return section1.originalAddressRange.getMinAddress().compareTo(section2.originalAddressRange.getMinAddress());  
+        });
         
         for (Section section : this.sections)
         {
@@ -78,7 +106,7 @@ public class InitializedSectionManager
     {
         private String name;
         private InputStream dataInput;
-        private int dataSize;
+        private long dataSize;
         private boolean read;
         private boolean write;
         private boolean execute;
@@ -86,7 +114,7 @@ public class InitializedSectionManager
         private AddressRange originalAddressRange;
         private List<AddressRange> addresses = new ArrayList<>();
         
-        public Section(String name, int addressOffset, InputStream dataInput, int dataSize, boolean read, boolean write, boolean execute)
+        public Section(String name, long addressOffset, InputStream dataInput, long dataSize, boolean read, boolean write, boolean execute)
         {
             this.name = name;
             this.dataInput = dataInput;
@@ -147,6 +175,8 @@ public class InitializedSectionManager
             Map<AddressRange, List<AddressRange>> overlapMap = this.overlaps(section);
             AddressSpace addrSpace = InitializedSectionManager.this.addressSpace;
             
+            //Msg.info(this, this.name + " pre-accomodation " + this.addresses.size() + " address ranges.");
+            
             for (var entry : overlapMap.entrySet())
             {
                 AddressRange overlappedRange = entry.getKey();
@@ -162,7 +192,7 @@ public class InitializedSectionManager
                     
                     for (AddressRange overlap : overlaps)
                     {
-                        if (overlap.getMinAddress().getUnsignedOffset() < addrSpace.getAddress(endOffset).next().getUnsignedOffset())
+                        if (overlap.getMinAddress().getUnsignedOffset() <= addrSpace.getAddress(endOffset).next().getUnsignedOffset())
                         {
                             // End before the overlap
                             endOffset = overlap.getMinAddress().previous().getUnsignedOffset();
@@ -182,11 +212,24 @@ public class InitializedSectionManager
                     startOffset = smallestOverlapStartRange.getMaxAddress().next().getUnsignedOffset();
                     overlaps.remove(smallestOverlapStartRange);
                 }
-                    
+                
+                // Add on the data after the last overlap
+                if (startOffset < overlappedRange.getMaxAddress().getUnsignedOffset())
+                {
+                    newAddressRanges.add(new AddressRangeImpl(addrSpace.getAddress(startOffset), overlappedRange.getMaxAddress()));
+                }
+                
                 // Remove the overlapped range and insert our new ones
                 this.addresses.remove(overlappedRange);
                 this.addresses.addAll(newAddressRanges);
             }
+            
+            this.addresses.sort((addr1, addr2) ->
+            {
+                return addr1.compareTo(addr2);
+            });
+            
+            //Msg.info(this, this.name + " post-accomodation " + this.addresses.size() + " address ranges.");
         }
         
         private List<AddressRange> mergeOverlappingRanges(List<AddressRange> in)

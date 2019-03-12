@@ -33,6 +33,7 @@ import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
+import ghidra.util.exception.NotFoundException;
 import ghidra.util.task.TaskMonitor;
 
 public abstract class SwitchProgramBuilder 
@@ -88,11 +89,16 @@ public abstract class SwitchProgramBuilder
         
             // Create the dynamic table and its memory block
             this.dynamicTable = ElfDynamicTable.createDynamicTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), new DummyElfHeader(), this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
-            this.sectionManager.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), (int)this.dynamicTable.getLength(), true, true, false);
+            this.sectionManager.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), this.dynamicTable.getLength(), true, true, false);
+
+            // Create dynamic sections
+            this.optionallyCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
+            this.optionallyCreateDynBlock(".init_array", ElfDynamicType.DT_INIT_ARRAY, ElfDynamicType.DT_INIT_ARRAYSZ);
+            this.optionallyCreateDynBlock(".fini_array", ElfDynamicType.DT_FINI_ARRAY, ElfDynamicType.DT_FINI_ARRAYSZ);
+            this.optionallyCreateDynBlock(".rela.dyn", ElfDynamicType.DT_RELA, ElfDynamicType.DT_RELASZ);
+            this.optionallyCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
+            this.optionallyCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
             
-            Msg.info(this, "MOD0 Dynamic Offset: " + this.mod0.getDynamicOffset());
-            
-            // Create sections
             // processStringTables
             
             this.sectionManager.finalizeSections();
@@ -100,7 +106,7 @@ public abstract class SwitchProgramBuilder
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
         } 
-        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException e) 
+        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException e) 
         {
             
         }
@@ -112,6 +118,18 @@ public abstract class SwitchProgramBuilder
     {
         int mod0Offset = this.memoryBinaryReader.readInt(this.textOffset + 4);
         this.mod0 = new MOD0Header(this.memoryBinaryReader, mod0Offset, mod0Offset);
+    }
+    
+    protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException
+    {
+        if (this.dynamicTable.containsDynamicValue(offsetType) && this.dynamicTable.containsDynamicValue(sizeType))
+        {
+            long offset = this.dynamicTable.getDynamicValue(offsetType);
+            long size = this.dynamicTable.getDynamicValue(sizeType);
+            
+            if (size > 0)
+                this.sectionManager.addSectionInheritPerms(name, offset, this.memoryByteProvider.getInputStream(offset), size);
+        }
     }
     
     // Fake only what is needed for an elf dynamic table
