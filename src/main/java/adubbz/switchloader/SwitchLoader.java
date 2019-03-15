@@ -16,6 +16,8 @@ import adubbz.switchloader.kip1.KIP1Header;
 import adubbz.switchloader.kip1.KIP1ProgramBuilder;
 import adubbz.switchloader.nso0.NSO0Header;
 import adubbz.switchloader.nso0.NSO0ProgramBuilder;
+import adubbz.switchloader.nro0.NRO0Header;
+import adubbz.switchloader.nro0.NRO0ProgramBuilder;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
@@ -59,7 +61,20 @@ public class SwitchLoader extends BinaryLoader
         {
             this.binaryType = BinaryType.NSO0;
         }
-        else return loadSpecs;
+		else
+		{
+			// Check for NRO
+			reader.readNextInt(); // Reserved
+			reader.readNextInt(); // MOD0 offset
+			reader.readNextLong(); // Padding
+			magic = reader.readNextAsciiString(4);
+			reader.setPointerIndex(0);
+			if (magic.equals("NRO0")) 
+			{
+				this.binaryType = BinaryType.NRO0;
+			}
+			else return loadSpecs;
+		}
         
         loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair("AARCH64:LE:64:v8A", "default"), true));
         
@@ -115,6 +130,11 @@ public class SwitchLoader extends BinaryLoader
             NSO0Header header = new NSO0Header(reader);
             NSO0ProgramBuilder.loadNSO0(header, provider, program, memoryConflictHandler, monitor);
         }
+		else if (this.binaryType == BinaryType.NRO0)
+        {
+            NRO0Header header = new NRO0Header(reader);
+            NRO0ProgramBuilder.loadNRO0(header, provider, program, memoryConflictHandler, monitor);
+        }
         
         return true;
     }
@@ -139,6 +159,6 @@ public class SwitchLoader extends BinaryLoader
     
     private static enum BinaryType
     {
-        KIP1, NSO0
+        KIP1, NSO0, NRO0
     }
 }
