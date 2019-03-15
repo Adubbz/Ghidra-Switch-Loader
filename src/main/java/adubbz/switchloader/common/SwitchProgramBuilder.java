@@ -113,6 +113,8 @@ public abstract class SwitchProgramBuilder
             this.optionallyCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
             this.optionallyCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
             
+            this.createDynSymBlock();
+            
             this.sectionManager.finalizeSections();
             this.parseStringTable();
             
@@ -131,6 +133,17 @@ public abstract class SwitchProgramBuilder
     {
         int mod0Offset = this.memoryBinaryReader.readInt(this.textOffset + 4);
         this.mod0 = new MOD0Header(this.memoryBinaryReader, mod0Offset, mod0Offset);
+    }
+    
+    protected void createDynSymBlock() throws NotFoundException, IOException
+    {
+        long symbolTableOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMTAB);
+        long symbolEntrySize = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMENT);
+        long dtHashOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
+        long nchain = this.memoryBinaryReader.readUnsignedInt(dtHashOff + 4);
+        Msg.info(this, "Symbol table size " + (nchain * symbolEntrySize));
+        
+        this.sectionManager.addSectionInheritPerms(".dynsym", symbolTableOff, this.memoryByteProvider.getInputStream(symbolTableOff), nchain * symbolEntrySize);
     }
     
     protected void parseStringTable() throws IOException, AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException
