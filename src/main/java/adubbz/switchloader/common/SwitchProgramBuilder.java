@@ -9,13 +9,19 @@ package adubbz.switchloader.common;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import adubbz.switchloader.util.ByteUtil;
 import generic.continues.RethrowContinuesFactory;
+import ghidra.app.cmd.label.SetLabelPrimaryCmd;
 import ghidra.app.util.MemoryBlockUtil;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteArrayProvider;
@@ -28,8 +34,11 @@ import ghidra.app.util.bin.format.elf.ElfHeader;
 import ghidra.app.util.bin.format.elf.ElfSectionHeader;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
+import ghidra.app.util.bin.format.elf.ElfSymbol;
+import ghidra.app.util.bin.format.elf.ElfSymbolTable;
 import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
 import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
+import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
 import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
@@ -39,9 +48,19 @@ import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.TerminatedStringDataType;
 import ghidra.program.model.listing.Data;
+import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.Library;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.MemoryAccessException;
+import ghidra.program.model.symbol.ExternalLocation;
+import ghidra.program.model.symbol.Namespace;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
+import ghidra.util.exception.DuplicateNameException;
+import ghidra.util.exception.InvalidInputException;
 import ghidra.util.exception.NotFoundException;
 import ghidra.util.task.TaskMonitor;
 
@@ -50,6 +69,7 @@ public abstract class SwitchProgramBuilder
     protected ByteProvider fileByteProvider;
     protected ByteProvider memoryByteProvider;
     protected BinaryReader memoryBinaryReader;
+    protected FactoryBundledWithBinaryReader factoryReader;
     protected Program program;
     protected MemoryBlockUtil mbu;
     
@@ -67,6 +87,13 @@ public abstract class SwitchProgramBuilder
     protected MOD0Header mod0;
     protected ElfHeader dummyElfHeader;
     protected ElfDynamicTable dynamicTable;
+    protected ElfStringTable stringTable;
+    protected ElfSymbolTable symbolTable;
+    
+    protected long symbolTableOff;
+    protected long symbolEntrySize;
+    protected long symbolTableSize;
+    
     
     protected SwitchProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
@@ -87,6 +114,7 @@ public abstract class SwitchProgramBuilder
             this.program.setImageBase(aSpace.getAddress(this.baseAddress), true);
             this.loadDefaultSegments(monitor);
             this.memoryBinaryReader = new BinaryReader(this.memoryByteProvider, true);
+            this.factoryReader = new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true);
             
             // Setup memory blocks
             InputStream textInputStream = this.memoryByteProvider.getInputStream(this.textOffset);
@@ -102,7 +130,7 @@ public abstract class SwitchProgramBuilder
             this.dummyElfHeader = new DummyElfHeader();
             
             // Create the dynamic table and its memory block
-            this.dynamicTable = ElfDynamicTable.createDynamicTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), this.dummyElfHeader, this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
+            this.dynamicTable = ElfDynamicTable.createDynamicTable(this.factoryReader, this.dummyElfHeader, this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
             this.sectionManager.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), this.dynamicTable.getLength(), true, true, false);
 
             // Create dynamic sections
@@ -116,12 +144,14 @@ public abstract class SwitchProgramBuilder
             this.createDynSymBlock();
             
             this.sectionManager.finalizeSections();
-            this.parseStringTable();
+            this.stringTable = this.setupStringTable();
+            this.symbolTable = this.setupSymbolTable();
+            this.performRelocations();
             
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
         } 
-        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | CodeUnitInsertionException | DataTypeConflictException e) 
+        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | CodeUnitInsertionException | DataTypeConflictException | InvalidInputException | NoSuchMethodException | SecurityException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | MemoryAccessException e) 
         {
             
         }
@@ -137,29 +167,21 @@ public abstract class SwitchProgramBuilder
     
     protected void createDynSymBlock() throws NotFoundException, IOException
     {
-        long symbolTableOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMTAB);
-        long symbolEntrySize = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMENT);
+        this.symbolTableOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMTAB);
+        this.symbolEntrySize = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMENT);
         long dtHashOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
         long nchain = this.memoryBinaryReader.readUnsignedInt(dtHashOff + 4);
-        Msg.info(this, "Symbol table size " + (nchain * symbolEntrySize));
-        
-        this.sectionManager.addSectionInheritPerms(".dynsym", symbolTableOff, this.memoryByteProvider.getInputStream(symbolTableOff), nchain * symbolEntrySize);
+        this.symbolTableSize = nchain * symbolEntrySize;
+        this.sectionManager.addSectionInheritPerms(".dynsym", symbolTableOff, this.memoryByteProvider.getInputStream(symbolTableOff), this.symbolTableSize);
     }
     
-    protected void parseStringTable() throws IOException, AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException
+    protected ElfStringTable setupStringTable() throws IOException, AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException, NotFoundException
     {
         long dynamicStringTableAddr = -1;
         long dynamicStringTableSize = -1;
         
-        try 
-        {
-            dynamicStringTableAddr = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRTAB);
-            dynamicStringTableSize = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRSZ);
-        }
-        catch (NotFoundException e) {
-            Msg.warn(this, "Binary does not contain a dynamic string table (DT_STRTAB)");
-            return;
-        }
+        dynamicStringTableAddr = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRTAB);
+        dynamicStringTableSize = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRSZ);
 
         long stringTableAddrOffset = this.baseAddress + dynamicStringTableAddr;
         ElfStringTable stringTable = ElfStringTable.createElfStringTable(new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true), this.dummyElfHeader,
@@ -173,6 +195,128 @@ public abstract class SwitchProgramBuilder
             int length = createString(address);
             address = address.addNoWrap(length);
         }
+        
+        return stringTable;
+    }
+    
+    protected ElfSymbolTable setupSymbolTable() throws InvalidInputException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException
+    {
+        Method m = ElfSymbolTable.class.getDeclaredMethod("createElfSymbolTable", FactoryBundledWithBinaryReader.class, ElfHeader.class, ElfSectionHeader.class, long.class, long.class, 
+                long.class, long.class, ElfStringTable.class, boolean.class);
+        m.setAccessible(true);
+        ElfSymbolTable symbolTable = (ElfSymbolTable)m.invoke(null, this.factoryReader, this.dummyElfHeader, null,
+                this.symbolTableOff,
+                this.symbolTableOff,
+                this.symbolTableSize,
+                this.symbolEntrySize,
+                this.stringTable, true);
+        
+        for (ElfSymbol elfSymbol : symbolTable.getSymbols()) 
+        {
+            Address address = this.aSpace.getAddress(this.baseAddress + elfSymbol.getValue());
+            String symName = elfSymbol.getNameAsString();
+            this.evaluateElfSymbol(elfSymbol, address, false);
+        }
+        
+        return symbolTable;
+    }
+    
+    protected void performRelocations() throws NotFoundException, IOException, MemoryAccessException
+    {
+        // Relocations
+        ArrayList<Relocation> relocs = new ArrayList<>();
+        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_REL.value)) 
+        {
+            processRelocations(program, this.memoryBinaryReader, relocs, this.symbolTable,
+                    (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_REL),
+                    (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELSZ));
+        }
+        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELA.value)) 
+        {
+            processRelocations(program, this.memoryBinaryReader, relocs, this.symbolTable,
+                    (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELA),
+                    (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELASZ));
+        }
+        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_JMPREL.value)) 
+        {
+            Msg.warn(this, "Got DT_JMPREL. This probably needs to be handled!");
+        }
+        
+        // TODO: Handle .got
+        
+        // TODO: Handle imports
+        
+        // Relocations again
+        for (Relocation reloc : relocs) 
+        {
+            Address target = this.aSpace.getAddress(reloc.offset + this.baseAddress);
+            if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_GLOB_DAT ||
+                reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_JUMP_SLOT ||
+                reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_ABS64) 
+            {
+                if (reloc.sym == null) 
+                {
+                    Msg.error(this, String.format("Error: Relocation at %x failed", target));
+                } 
+                else 
+                {
+                    program.getMemory().setLong(target, reloc.sym.getValue() + this.baseAddress + reloc.addend);
+                }
+            } 
+            else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_RELATIVE) 
+            {
+                long target_val = program.getMemory().getLong(target);
+                program.getMemory().setLong(target, target_val + this.baseAddress);
+            } 
+            else 
+            {
+                Msg.info(this, String.format("TODO: r_type 0x%x", reloc.r_type));
+            }
+        }
+    }
+    
+    class Relocation 
+    {
+        public Relocation(long offset, long r_type, ElfSymbol sym, long addend) 
+        {
+            this.offset = offset;
+            this.r_type = r_type;
+            this.sym = sym;
+            this.addend = addend;
+        }
+        
+        long offset;
+        long r_type;
+        ElfSymbol sym;
+        long addend;
+    }
+    
+    private Set<Long> processRelocations(Program program, BinaryReader provider, List<Relocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
+    {
+        Set<Long> locations = new HashSet<Long>();
+        for (long i = 0; i < relsz / 0x18; i++) 
+        {
+            long offset = provider.readLong(rel + i * 0x18);
+            long info = provider.readLong(rel + i * 0x18 + 8);
+            long addend = provider.readLong(rel + i * 0x18 + 0x10);
+            
+            long r_type = info & 0xffffffffL;
+            long r_sym = info >> 32;
+        
+            ElfSymbol sym;
+            if (r_sym != 0) {
+                sym = symtab.getSymbolAt(r_sym);
+            } else {
+                sym = null;
+            }
+            
+            if (r_type != AARCH64_ElfRelocationConstants.R_AARCH64_TLSDESC)
+            {
+                locations.add(offset);
+            }
+            relocs.add(new Relocation(offset, r_type, sym, addend));
+        }
+        return locations;
     }
     
     protected int createString(Address address) throws CodeUnitInsertionException, DataTypeConflictException 
@@ -185,6 +329,91 @@ public abstract class SwitchProgramBuilder
         }
         
         return d.getLength();
+    }
+    
+    private void evaluateElfSymbol(ElfSymbol elfSymbol, Address address, boolean isFakeExternal) throws InvalidInputException 
+    {
+        if (elfSymbol.isSection()) {
+            // Do not add section symbols to program symbol table
+            return;
+        }
+
+        String name = elfSymbol.getNameAsString();
+        if (name == null) {
+            return;
+        }
+
+        boolean isPrimary = (elfSymbol.getType() == ElfSymbol.STT_FUNC) ||
+            (elfSymbol.getType() == ElfSymbol.STT_OBJECT) || (elfSymbol.getSize() != 0);
+        // don't displace existing primary unless symbol is a function or object symbol
+        if (name.contains("@")) {
+            isPrimary = false; // do not make version symbol primary
+        }
+        else if (!isPrimary && (elfSymbol.isGlobal() || elfSymbol.isWeak())) {
+            Symbol existingSym = program.getSymbolTable().getPrimarySymbol(address);
+            isPrimary = (existingSym == null);
+        }
+
+        createSymbol(address, name, isPrimary, elfSymbol.isAbsolute(), null);
+
+        // NOTE: treat weak symbols as global so that other programs may link to them.
+        // In the future, we may want additional symbol flags to denote the distinction
+        if ((elfSymbol.isGlobal() || elfSymbol.isWeak()) && !isFakeExternal) 
+        {
+            program.getSymbolTable().addExternalEntryPoint(address);
+        }
+    }
+    
+    public Symbol createSymbol(Address addr, String name, boolean isPrimary, boolean pinAbsolute, Namespace namespace) throws InvalidInputException 
+    {
+        // TODO: At this point, we should be marking as data or code
+        SymbolTable symbolTable = program.getSymbolTable();
+        Symbol sym = symbolTable.createLabel(addr, name, namespace, SourceType.IMPORTED);
+        if (isPrimary) {
+            checkPrimary(sym);
+        }
+        if (pinAbsolute && !sym.isPinned()) {
+            sym.setPinned(true);
+        }
+        return sym;
+    }
+    
+    private Symbol checkPrimary(Symbol sym) 
+    {
+        if (sym == null || sym.isPrimary()) 
+        {
+            return sym;
+        }
+
+        String name = sym.getName();
+        Address addr = sym.getAddress();
+
+        if (name.indexOf("@") > 0) { // <sym>@<version> or <sym>@@<version>
+            return sym; // do not make versioned symbols primary
+        }
+
+        // if starts with a $, probably a markup symbol, like $t,$a,$d
+        if (name.startsWith("$")) {
+            return sym;
+        }
+
+        // if sym starts with a non-letter give preference to an existing symbol which does
+        if (!Character.isAlphabetic(name.codePointAt(0))) {
+            Symbol primarySymbol = program.getSymbolTable().getPrimarySymbol(addr);
+            if (primarySymbol != null && primarySymbol.getSource() != SourceType.DEFAULT &&
+                Character.isAlphabetic(primarySymbol.getName().codePointAt(0))) {
+                return sym;
+            }
+        }
+
+        SetLabelPrimaryCmd cmd = new SetLabelPrimaryCmd(addr, name, sym.getParentNamespace());
+        if (cmd.applyTo(program)) {
+            return program.getSymbolTable().getSymbol(name, addr, sym.getParentNamespace());
+        }
+
+        Msg.error(this, cmd.getStatusMsg());
+
+        return sym;
     }
     
     protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException
