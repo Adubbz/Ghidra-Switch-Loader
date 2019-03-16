@@ -14,32 +14,32 @@ import ghidra.util.Msg;
 
 public class NRO0Header 
 {
-	private int mod0Offset;
+    private int mod0Offset;
     private String magic;
     private int version;
-	private int size;
+    private int size;
     private int flags;
     private NRO0SectionHeader textHeader;
     private NRO0SectionHeader rodataHeader;
     private NRO0SectionHeader dataHeader;
     private int bssSize;
     private byte[] buildId;
-	private NRO0SectionHeader apiInfo;
+    private NRO0SectionHeader apiInfo;
     private NRO0SectionHeader dynstr;
     private NRO0SectionHeader dynsym;
-    
+
     public NRO0Header(BinaryReader reader)
     {
         this.readHeader(reader);
     }
-    
+
     private void readHeader(BinaryReader reader)
     {
         try 
         {
-			reader.readNextInt(); // Reserved
-			this.mod0Offset = reader.readNextInt();
-			reader.readNextLong(); // Padding
+            reader.readNextInt(); // Reserved
+            this.mod0Offset = reader.readNextInt();
+            reader.readNextLong(); // Padding
             this.magic = reader.readNextAsciiString(4);
             this.version = reader.readNextInt();
             this.size = reader.readNextInt();
@@ -48,9 +48,9 @@ public class NRO0Header
             this.rodataHeader = new NRO0SectionHeader(reader);
             this.dataHeader = new NRO0SectionHeader(reader);
             this.bssSize = reader.readNextInt();
-			reader.readNextInt(); // Reserved
+            reader.readNextInt(); // Reserved
             this.buildId = reader.readNextByteArray(0x20);
-			reader.readNextInt(); // Reserved
+            reader.readNextInt(); // Reserved
             this.apiInfo = new NRO0SectionHeader(reader);
             this.dynstr = new NRO0SectionHeader(reader);
             this.dynsym = new NRO0SectionHeader(reader);
@@ -60,25 +60,25 @@ public class NRO0Header
             Msg.error(this, "Failed to read NRO0 header");
         }
     }
-    
+
     public NRO0SectionHeader getSectionHeader(SectionType type)
     {
         switch (type)
         {
             case TEXT:
                 return this.textHeader;
-                
+    
             case RODATA:
                 return this.rodataHeader;
-                
+    
             case DATA:
                 return this.dataHeader;
-        
+    
             default:
                 return null;
         }
     }
-    
+
     public int getBssSize()
     {
         return this.bssSize;

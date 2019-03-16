@@ -15,12 +15,12 @@ public class NRO0SectionHeader
 {
     private int fileOffset;
     private int size;
-    
+
     public NRO0SectionHeader(BinaryReader reader)
     {
         this.readHeader(reader);
     }
-    
+
     private void readHeader(BinaryReader reader)
     {
         try
@@ -33,12 +33,12 @@ public class NRO0SectionHeader
             Msg.error(this, "Failed to read NRO0 section header");
         }
     }
-    
+
     public int getFileOffset()
     {
         return this.fileOffset;
     }
-    
+
     public int getSize()
     {
         return this.size;

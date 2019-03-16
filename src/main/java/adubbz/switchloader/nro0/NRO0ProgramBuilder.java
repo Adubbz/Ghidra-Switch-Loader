@@ -24,47 +24,47 @@ import ghidra.util.task.TaskMonitor;
 public class NRO0ProgramBuilder extends SwitchProgramBuilder
 {
     private NRO0Header nro0;
-    
+
     protected NRO0ProgramBuilder(NRO0Header nro0, ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
         super(provider, program, handler);
         this.nro0 = nro0;
     }
-    
+
     public static void loadNRO0(NRO0Header header, ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
     {
         NRO0ProgramBuilder builder = new NRO0ProgramBuilder(header, provider, program, conflictHandler);
         builder.load(monitor);
     }
-    
+
     @Override
     protected void loadDefaultSegments(TaskMonitor monitor) throws IOException, AddressOverflowException, AddressOutOfBoundsException
     {
         long baseAddress = 0x7100000000L;
         AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
-        
+
         NRO0SectionHeader textHeader = this.nro0.getSectionHeader(SectionType.TEXT);
         NRO0SectionHeader rodataHeader = this.nro0.getSectionHeader(SectionType.RODATA);
         NRO0SectionHeader dataHeader = this.nro0.getSectionHeader(SectionType.DATA);
-        
+
         this.textOffset = textHeader.getFileOffset();
         this.rodataOffset = rodataHeader.getFileOffset();
         this.dataOffset = dataHeader.getFileOffset();
         this.textSize = textHeader.getSize();
         this.rodataSize = rodataHeader.getSize();
         this.dataSize = dataHeader.getSize();
-        
+
         // The data section is last, so we use its offset + decompressed size
         byte[] full = new byte[this.dataOffset + this.dataSize];
-        
+
         byte[] text = this.fileByteProvider.readBytes(textHeader.getFileOffset(), this.textSize);
-		System.arraycopy(text, 0, full, this.textOffset, this.textSize);
-        
+        System.arraycopy(text, 0, full, this.textOffset, this.textSize);
+
         byte[] rodata = this.fileByteProvider.readBytes(rodataHeader.getFileOffset(), this.rodataSize);
-		System.arraycopy(rodata, 0, full, this.rodataOffset, this.rodataSize);
-        
+        System.arraycopy(rodata, 0, full, this.rodataOffset, this.rodataSize);
+
         byte[] data = this.fileByteProvider.readBytes(dataHeader.getFileOffset(), this.dataSize);
-		System.arraycopy(data, 0, full, this.dataOffset, this.dataSize);
+        System.arraycopy(data, 0, full, this.dataOffset, this.dataSize);
         this.memoryByteProvider = new ByteArrayProvider(full);
     }
 }

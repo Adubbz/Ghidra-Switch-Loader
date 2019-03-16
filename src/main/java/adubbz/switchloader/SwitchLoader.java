@@ -43,16 +43,16 @@ public class SwitchLoader extends BinaryLoader
 {
     public static final String SWITCH_NAME = "Nintendo Switch Binary";
     private BinaryType binaryType;
-    
+
     @Override
     public Collection<LoadSpec> findSupportedLoadSpecs(ByteProvider provider) throws IOException 
     {
         List<LoadSpec> loadSpecs = new ArrayList<>();
         BinaryReader reader = new BinaryReader(provider, true);
         String magic = reader.readNextAsciiString(4);
-        
+
         reader.setPointerIndex(0);
-        
+
         if (magic.equals("KIP1")) 
         {
             this.binaryType = BinaryType.KIP1;
@@ -61,23 +61,23 @@ public class SwitchLoader extends BinaryLoader
         {
             this.binaryType = BinaryType.NSO0;
         }
-		else
-		{
-			// Check for NRO
-			reader.readNextInt(); // Reserved
-			reader.readNextInt(); // MOD0 offset
-			reader.readNextLong(); // Padding
-			magic = reader.readNextAsciiString(4);
-			reader.setPointerIndex(0);
-			if (magic.equals("NRO0")) 
-			{
-				this.binaryType = BinaryType.NRO0;
-			}
-			else return loadSpecs;
-		}
-        
+        else
+        {
+            // Check for NRO
+            reader.readNextInt(); // Reserved
+            reader.readNextInt(); // MOD0 offset
+            reader.readNextLong(); // Padding
+            magic = reader.readNextAsciiString(4);
+            reader.setPointerIndex(0);
+            if (magic.equals("NRO0")) 
+            {
+                this.binaryType = BinaryType.NRO0;
+            }
+            else return loadSpecs;
+        }
+
         loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair("AARCH64:LE:64:v8A", "default"), true));
-        
+
         return loadSpecs;
     }
 
@@ -85,7 +85,7 @@ public class SwitchLoader extends BinaryLoader
     protected List<Program> loadProgram(ByteProvider provider, String programName,
             DomainFolder programFolder, LoadSpec loadSpec, List<Option> options, MessageLog log,
             Object consumer, TaskMonitor monitor)
-            throws IOException, CancelledException 
+                    throws IOException, CancelledException 
     {
         LanguageCompilerSpecPair pair = loadSpec.getLanguageCompilerSpec();
         Language importerLanguage = getLanguageService().getLanguage(pair.languageID);
@@ -94,7 +94,7 @@ public class SwitchLoader extends BinaryLoader
         Address baseAddr = importerLanguage.getAddressFactory().getDefaultAddressSpace().getAddress(0);
         Program prog = createProgram(provider, programName, baseAddr, getName(), importerLanguage, importerCompilerSpec, consumer);
         boolean success = false;
-        
+
         try 
         {
             success = this.loadInto(provider, loadSpec, options, log, prog, monitor, MemoryConflictHandler.ALWAYS_OVERWRITE);
@@ -107,7 +107,7 @@ public class SwitchLoader extends BinaryLoader
                 prog = null;
             }
         }
-        
+
         List<Program> results = new ArrayList<Program>();
         if (prog != null) results.add(prog);
         return results;
@@ -116,10 +116,10 @@ public class SwitchLoader extends BinaryLoader
     @Override
     protected boolean loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options,
             MessageLog messageLog, Program program, TaskMonitor monitor, MemoryConflictHandler memoryConflictHandler) 
-            throws IOException
+                    throws IOException
     {
         BinaryReader reader = new BinaryReader(provider, true);
-        
+
         if (this.binaryType == BinaryType.KIP1)
         {
             KIP1Header header = new KIP1Header(reader);
@@ -130,15 +130,15 @@ public class SwitchLoader extends BinaryLoader
             NSO0Header header = new NSO0Header(reader);
             NSO0ProgramBuilder.loadNSO0(header, provider, program, memoryConflictHandler, monitor);
         }
-		else if (this.binaryType == BinaryType.NRO0)
+        else if (this.binaryType == BinaryType.NRO0)
         {
             NRO0Header header = new NRO0Header(reader);
             NRO0ProgramBuilder.loadNRO0(header, provider, program, memoryConflictHandler, monitor);
         }
-        
+
         return true;
     }
-    
+
     @Override
     public LoaderTier getTier() 
     {
@@ -150,13 +150,13 @@ public class SwitchLoader extends BinaryLoader
     {
         return 0;
     }
-    
+
     @Override
     public String getName() 
     {
         return SWITCH_NAME;
     }
-    
+
     private static enum BinaryType
     {
         KIP1, NSO0, NRO0
