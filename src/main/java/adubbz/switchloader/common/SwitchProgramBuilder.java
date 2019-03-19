@@ -18,6 +18,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import adubbz.switchloader.util.ByteUtil;
@@ -91,6 +92,7 @@ public abstract class SwitchProgramBuilder
     protected ElfStringTable stringTable;
     protected ElfSymbolTable symbolTable;
     protected ArrayList<Relocation> relocs = new ArrayList<>();
+    protected ArrayList<PltEntry> pltEntries = new ArrayList<>();
     
     protected long symbolTableOff;
     protected long symbolEntrySize;
@@ -262,16 +264,84 @@ public abstract class SwitchProgramBuilder
                 this.memBlockHelper.addSection(".got.plt", pltGotOff, this.memoryByteProvider.getInputStream(pltGotOff), pltGotEnd - pltGotStart, true, false, false);
             }
             
+            int last = 12;
+            
+            while (true)
+            {
+                int pos = -1;
+                
+                for (int i = last; i < this.textSize; i++)
+                {
+                    if (this.memoryBinaryReader.readInt(i) == 0xD61F0220)
+                    {
+                        pos = i;
+                        break;
+                    }
+                }
+                
+                if (pos == -1) break;
+                last = pos + 1;
+                if ((pos % 4) != 0) continue;
+                
+                int off = pos - 12;
+                long a = Integer.toUnsignedLong(this.memoryBinaryReader.readInt(off));
+                long b = Integer.toUnsignedLong(this.memoryBinaryReader.readInt(off + 4));
+                long c = Integer.toUnsignedLong(this.memoryBinaryReader.readInt(off + 8));
+                long d = Integer.toUnsignedLong(this.memoryBinaryReader.readInt(off + 12));
+
+                if (d == 0xD61F0220L && (a & 0x9f00001fL) == 0x90000010L && (b & 0xffe003ffL) == 0xf9400211L)
+                {
+                    long base = off & ~0xFFFL;
+                    long immhi = (a >> 5) & 0x7ffffL;
+                    long immlo = (a >> 29) & 3;
+                    long paddr = base + ((immlo << 12) | (immhi << 14));
+                    long poff = ((b >> 10) & 0xfffL) << 3;
+                    long target = paddr + poff;
+                    if (pltGotStart <= target && target < pltGotEnd)
+                        this.pltEntries.add(new PltEntry(off, target));
+                }
+            }
+            
+            long pltStart = this.pltEntries.get(0).off;
+            long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
+            this.memBlockHelper.addSection(".plt", pltStart, this.memoryByteProvider.getInputStream(pltStart), pltEnd - pltStart, true, false, false);
+            
+            boolean good = false;
+            long gotEnd = pltGotEnd + 8;
+            
+            while (!this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY) || gotEnd < this.dynamicTable.getDynamicValue(ElfDynamicType.DT_INIT_ARRAY))
+            {
+                boolean foundOffset = false;
+                
+                for (Relocation reloc : this.relocs)
+                {
+                    if (reloc.offset == gotEnd)
+                    {
+                        foundOffset = true;
+                        break;
+                    }
+                }
+                
+                if (!foundOffset)
+                    break;
+                
+                good = true;
+                gotEnd += 8;
+            }
+            
+            if (good)
+                this.memBlockHelper.addSection(".got", pltGotEnd, this.memoryByteProvider.getInputStream(pltGotEnd), gotEnd - pltGotEnd, true, false, false);
+            
             Msg.warn(this, "Got DT_JMPREL. This probably needs to be handled!");
         }
-        
-        // TODO: Handle .got
         
         // TODO: Handle imports
     }
     
-    protected void performRelocations() throws MemoryAccessException
+    protected void performRelocations() throws MemoryAccessException, InvalidInputException, AddressOutOfBoundsException
     {
+        Map<Long, String> gotNameLookup = new HashMap<>(); 
+        
         // Relocations again
         for (Relocation reloc : relocs) 
         {
@@ -287,6 +357,9 @@ public abstract class SwitchProgramBuilder
                 else 
                 {
                     program.getMemory().setLong(target, reloc.sym.getValue() + this.baseAddress + reloc.addend);
+                    
+                    if (reloc.addend == 0)
+                        gotNameLookup.put(reloc.offset, reloc.sym.getNameAsString());
                 }
             } 
             else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_RELATIVE) 
@@ -299,22 +372,17 @@ public abstract class SwitchProgramBuilder
                 Msg.info(this, String.format("TODO: r_type 0x%x", reloc.r_type));
             }
         }
-    }
-    
-    class Relocation 
-    {
-        public Relocation(long offset, long r_type, ElfSymbol sym, long addend) 
-        {
-            this.offset = offset;
-            this.r_type = r_type;
-            this.sym = sym;
-            this.addend = addend;
-        }
         
-        long offset;
-        long r_type;
-        ElfSymbol sym;
-        long addend;
+        for (PltEntry entry : this.pltEntries)
+        {
+            if (gotNameLookup.containsKey(entry.target))
+            {
+                long addr = this.baseAddress + entry.off;
+                String name = gotNameLookup.get(entry.target);
+                // TODO: Mark as func
+                this.createSymbol(this.aSpace.getAddress(addr), name, false, false, null);
+            }
+        }
     }
     
     private Set<Long> processRelocations(Program program, BinaryReader provider, List<Relocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
@@ -454,6 +522,34 @@ public abstract class SwitchProgramBuilder
                 Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
                 this.memBlockHelper.addSection(name, offset, this.memoryByteProvider.getInputStream(offset), size, true, false, false);
             }
+        }
+    }
+    
+    class Relocation 
+    {
+        public Relocation(long offset, long r_type, ElfSymbol sym, long addend) 
+        {
+            this.offset = offset;
+            this.r_type = r_type;
+            this.sym = sym;
+            this.addend = addend;
+        }
+        
+        long offset;
+        long r_type;
+        ElfSymbol sym;
+        long addend;
+    }
+    
+    class PltEntry
+    {
+        long off;
+        long target;
+        
+        public PltEntry(long offset, long target)
+        {
+            this.off = offset;
+            this.target = target;
         }
     }
     
