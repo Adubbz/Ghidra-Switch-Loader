@@ -14,6 +14,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -75,7 +76,7 @@ public abstract class SwitchProgramBuilder
     
     long baseAddress;
     protected AddressSpace aSpace;
-    protected InitializedSectionManager sectionManager;
+    protected MemoryBlockHelper memBlockHelper;
 
     protected int textOffset;
     protected int rodataOffset;
@@ -89,6 +90,7 @@ public abstract class SwitchProgramBuilder
     protected ElfDynamicTable dynamicTable;
     protected ElfStringTable stringTable;
     protected ElfSymbolTable symbolTable;
+    protected ArrayList<Relocation> relocs = new ArrayList<>();
     
     protected long symbolTableOff;
     protected long symbolEntrySize;
@@ -106,13 +108,13 @@ public abstract class SwitchProgramBuilder
     {
         this.baseAddress = 0x7100000000L;
         this.aSpace = program.getAddressFactory().getDefaultAddressSpace();
-        this.sectionManager = new InitializedSectionManager(monitor, this.mbu, this.aSpace, this.baseAddress);
         
         try 
         {
             // Set the base address
             this.program.setImageBase(aSpace.getAddress(this.baseAddress), true);
             this.loadDefaultSegments(monitor);
+            this.memBlockHelper = new MemoryBlockHelper(monitor, this.program, this.memoryByteProvider, this.mbu, this.baseAddress);
             this.memoryBinaryReader = new BinaryReader(this.memoryByteProvider, true);
             this.factoryReader = new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.memoryByteProvider, true);
             
@@ -121,9 +123,9 @@ public abstract class SwitchProgramBuilder
             InputStream rodataInputStream = this.memoryByteProvider.getInputStream(this.rodataOffset);
             InputStream dataInputStream = this.memoryByteProvider.getInputStream(this.dataOffset);
             
-            this.sectionManager.addSection(".text", this.textOffset, textInputStream, this.textSize, true, false, true);
-            this.sectionManager.addSection(".rodata", this.rodataOffset, rodataInputStream, this.rodataSize, true, false, false);
-            this.sectionManager.addSection(".data", this.dataOffset, dataInputStream, this.dataSize, true, true, false);
+            this.memBlockHelper.addDeferredSection(".text", this.textOffset, textInputStream, this.textSize, true, false, true);
+            this.memBlockHelper.addDeferredSection(".rodata", this.rodataOffset, rodataInputStream, this.rodataSize, true, false, false);
+            this.memBlockHelper.addDeferredSection(".data", this.dataOffset, dataInputStream, this.dataSize, true, true, false);
             
             // Load MOD0
             this.loadMod0();
@@ -131,7 +133,7 @@ public abstract class SwitchProgramBuilder
             
             // Create the dynamic table and its memory block
             this.dynamicTable = ElfDynamicTable.createDynamicTable(this.factoryReader, this.dummyElfHeader, this.mod0.getDynamicOffset(), this.mod0.getDynamicOffset());
-            this.sectionManager.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), this.dynamicTable.getLength(), true, true, false);
+            this.memBlockHelper.addSection(".dynamic", this.mod0.getDynamicOffset(), this.memoryByteProvider.getInputStream(this.mod0.getDynamicOffset()), this.dynamicTable.getLength(), true, true, false);
 
             // Create dynamic sections
             this.optionallyCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
@@ -142,18 +144,20 @@ public abstract class SwitchProgramBuilder
             this.optionallyCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
             
             this.createDynSymBlock();
-            
-            this.sectionManager.finalizeSections();
+
+            // TODO: .plt here
             this.stringTable = this.setupStringTable();
             this.symbolTable = this.setupSymbolTable();
+            this.setupRelocations();
+            this.memBlockHelper.finalizeSections();
             this.performRelocations();
             
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
         } 
-        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | CodeUnitInsertionException | DataTypeConflictException | InvalidInputException | NoSuchMethodException | SecurityException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | MemoryAccessException e) 
+        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | DataTypeConflictException | SecurityException | IllegalArgumentException | MemoryAccessException | InvalidInputException | NoSuchMethodException | IllegalAccessException | InvocationTargetException | CodeUnitInsertionException e) 
         {
-            
+            e.printStackTrace();
         }
     }
     
@@ -165,14 +169,14 @@ public abstract class SwitchProgramBuilder
         this.mod0 = new MOD0Header(this.memoryBinaryReader, mod0Offset, mod0Offset);
     }
     
-    protected void createDynSymBlock() throws NotFoundException, IOException
+    protected void createDynSymBlock() throws NotFoundException, IOException, AddressOverflowException, AddressOutOfBoundsException
     {
         this.symbolTableOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMTAB);
         this.symbolEntrySize = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMENT);
         long dtHashOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
         long nchain = this.memoryBinaryReader.readUnsignedInt(dtHashOff + 4);
         this.symbolTableSize = nchain * symbolEntrySize;
-        this.sectionManager.addSectionInheritPerms(".dynsym", symbolTableOff, this.memoryByteProvider.getInputStream(symbolTableOff), this.symbolTableSize);
+        this.memBlockHelper.addSection(".dynsym", symbolTableOff, this.memoryByteProvider.getInputStream(symbolTableOff), this.symbolTableSize, true, false, false);
     }
     
     protected ElfStringTable setupStringTable() throws IOException, AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException, NotFoundException
@@ -221,31 +225,53 @@ public abstract class SwitchProgramBuilder
         return symbolTable;
     }
     
-    protected void performRelocations() throws NotFoundException, IOException, MemoryAccessException
+    protected void setupRelocations() throws NotFoundException, IOException, MemoryAccessException, AddressOverflowException, AddressOutOfBoundsException
     {
-        // Relocations
-        ArrayList<Relocation> relocs = new ArrayList<>();
         if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_REL.value)) 
         {
+            Msg.info(this, "Processing DT_REL relocations...");
             processRelocations(program, this.memoryBinaryReader, relocs, this.symbolTable,
                     (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_REL),
                     (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELSZ));
         }
-        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELA.value)) 
+        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELA)) 
         {
+            Msg.info(this, "Processing DT_RELA relocations...");
             processRelocations(program, this.memoryBinaryReader, relocs, this.symbolTable,
                     (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELA),
                     (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELASZ));
         }
-        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_JMPREL.value)) 
+        if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_JMPREL)) 
         {
+            Msg.info(this, "Processing JMPREL relocations...");
+            ArrayList<Relocation> pltRelocs = new ArrayList<>();
+            
+            // TODO: Do this twice. Once with a null symbol table, once with a normal one
+            this.processRelocations(program, this.memoryBinaryReader, pltRelocs, this.symbolTable,
+                    (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_JMPREL),
+                    (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_PLTRELSZ));
+            relocs.addAll(pltRelocs);
+            
+            pltRelocs.sort(Comparator.comparing(reloc -> reloc.offset));
+            long pltGotStart = pltRelocs.get(0).offset;
+            long pltGotEnd = pltRelocs.get(pltRelocs.size() - 1).offset + 8;
+            
+            if (this.dynamicTable.containsDynamicValue(ElfDynamicType.DT_PLTGOT))
+            {
+                long pltGotOff = this.dynamicTable.getDynamicValue(ElfDynamicType.DT_PLTGOT);
+                this.memBlockHelper.addSection(".got.plt", pltGotOff, this.memoryByteProvider.getInputStream(pltGotOff), pltGotEnd - pltGotStart, true, false, false);
+            }
+            
             Msg.warn(this, "Got DT_JMPREL. This probably needs to be handled!");
         }
         
         // TODO: Handle .got
         
         // TODO: Handle imports
-        
+    }
+    
+    protected void performRelocations() throws MemoryAccessException
+    {
         // Relocations again
         for (Relocation reloc : relocs) 
         {
@@ -256,7 +282,7 @@ public abstract class SwitchProgramBuilder
             {
                 if (reloc.sym == null) 
                 {
-                    Msg.error(this, String.format("Error: Relocation at %x failed", target));
+                    Msg.error(this, String.format("Error: Relocation at %x failed", target.getOffset()));
                 } 
                 else 
                 {
@@ -416,7 +442,7 @@ public abstract class SwitchProgramBuilder
         return sym;
     }
     
-    protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException
+    protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException, AddressOverflowException, AddressOutOfBoundsException
     {
         if (this.dynamicTable.containsDynamicValue(offsetType) && this.dynamicTable.containsDynamicValue(sizeType))
         {
@@ -426,7 +452,7 @@ public abstract class SwitchProgramBuilder
             if (size > 0)
             {
                 Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
-                this.sectionManager.addSectionInheritPerms(name, offset, this.memoryByteProvider.getInputStream(offset), size);
+                this.memBlockHelper.addSection(name, offset, this.memoryByteProvider.getInputStream(offset), size, true, false, false);
             }
         }
     }
