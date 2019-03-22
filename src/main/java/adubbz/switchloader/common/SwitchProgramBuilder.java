@@ -250,7 +250,6 @@ public abstract class SwitchProgramBuilder
             Msg.info(this, "Processing JMPREL relocations...");
             ArrayList<Relocation> pltRelocs = new ArrayList<>();
             
-            // TODO: Do this twice. Once with a null symbol table, once with a normal one
             this.processRelocations(program, this.memoryBinaryReader, pltRelocs, this.symbolTable,
                     (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_JMPREL),
                     (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_PLTRELSZ));
