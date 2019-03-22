@@ -37,6 +37,15 @@ else {
 def DISTRIBUTION_DIR = file("dist")
 def PATH_IN_ZIP = "${project.name}"
 
+def getGitHash = {
+    def stdout = new ByteArrayOutputStream()
+    exec {
+        commandLine 'git', 'rev-parse', '--short', 'HEAD'
+        standardOutput = stdout
+    }
+    return stdout.toString().trim()
+}
+
 repositories {
     mavenCentral()
 }
@@ -52,7 +61,7 @@ dependencies {
 }
 
 task buildExtension (type: Zip, overwrite: true) {
-    baseName "${project.name}".replace(' ', '_') + "-${project.version}"
+    baseName "${project.name}".replace(' ', '_') + "-${project.version}-${getGitHash()}"
     extension 'zip'
     destinationDir DISTRIBUTION_DIR
     version ''
