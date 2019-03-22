@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 
 import adubbz.switchloader.util.ByteUtil;
+import adubbz.switchloader.util.UIUtil;
 import generic.continues.RethrowContinuesFactory;
 import ghidra.app.cmd.label.SetLabelPrimaryCmd;
 import ghidra.app.util.MemoryBlockUtil;
@@ -160,6 +161,8 @@ public abstract class SwitchProgramBuilder
         {
             e.printStackTrace();
         }
+        
+        UIUtil.sortProgramTree(this.program);
     }
     
     protected abstract void loadDefaultSegments(TaskMonitor monitor) throws IOException, AddressOverflowException, AddressOutOfBoundsException;
