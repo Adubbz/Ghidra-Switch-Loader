@@ -61,7 +61,7 @@ dependencies {
 }
 
 task buildExtension (type: Zip, overwrite: true) {
-    baseName "${project.name}".replace(' ', '_') + "-${project.version}-${getGitHash()}"
+    baseName "${project.name}-${project.version}-${getGitHash()}".replace(' ', '_')
     extension 'zip'
     destinationDir DISTRIBUTION_DIR
     version ''
