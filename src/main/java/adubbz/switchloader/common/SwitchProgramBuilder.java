@@ -332,8 +332,6 @@ public abstract class SwitchProgramBuilder
             
             if (good)
                 this.memBlockHelper.addSection(".got", pltGotEnd, this.memoryByteProvider.getInputStream(pltGotEnd), gotEnd - pltGotEnd, true, false, false);
-            
-            Msg.warn(this, "Got DT_JMPREL. This probably needs to be handled!");
         }
         
         // TODO: Handle imports

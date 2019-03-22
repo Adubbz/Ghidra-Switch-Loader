@@ -10,7 +10,6 @@ import java.io.IOException;
 
 import adubbz.switchloader.common.SectionType;
 import adubbz.switchloader.common.SwitchProgramBuilder;
-import adubbz.switchloader.util.ByteUtil;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MemoryConflictHandler;
@@ -59,20 +58,47 @@ public class NSO0ProgramBuilder extends SwitchProgramBuilder
         
         // The data section is last, so we use its offset + decompressed size
         byte[] full = new byte[this.dataOffset + this.dataSize];
+        byte[] decompressedText;
+        byte[] decompressedRodata;
+        byte[] decompressedData;
         
-        byte[] compressedText = this.fileByteProvider.readBytes(textHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.TEXT));
-        byte[] decompressedText = new byte[this.textSize];
-        decompressor.decompress(compressedText, decompressedText);
+        if (this.nso0.isSectionCompressed(SectionType.TEXT))
+        {
+            byte[] compressedText = this.fileByteProvider.readBytes(this.nso0.getSectionFileOffset(SectionType.TEXT), this.nso0.getCompressedSectionSize(SectionType.TEXT));
+            decompressedText = new byte[this.textSize];
+            decompressor.decompress(compressedText, decompressedText);
+        }
+        else
+        {
+            decompressedText = this.fileByteProvider.readBytes(this.nso0.getSectionFileOffset(SectionType.TEXT), this.textSize);
+        }
+        
         System.arraycopy(decompressedText, 0, full, this.textOffset, this.textSize);
         
-        byte[] compressedRodata = this.fileByteProvider.readBytes(rodataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.RODATA));
-        byte[] decompressedRodata = new byte[this.rodataSize];
-        decompressor.decompress(compressedRodata, decompressedRodata);
+        if (this.nso0.isSectionCompressed(SectionType.RODATA))
+        {
+            byte[] compressedRodata = this.fileByteProvider.readBytes(this.nso0.getSectionFileOffset(SectionType.RODATA), this.nso0.getCompressedSectionSize(SectionType.RODATA));
+            decompressedRodata = new byte[this.rodataSize];
+            decompressor.decompress(compressedRodata, decompressedRodata);
+        }
+        else
+        {
+            decompressedRodata = this.fileByteProvider.readBytes(this.nso0.getSectionFileOffset(SectionType.RODATA), this.rodataSize);
+        }
+        
         System.arraycopy(decompressedRodata, 0, full, this.rodataOffset, this.rodataSize);
         
-        byte[] compressedData = this.fileByteProvider.readBytes(dataHeader.getFileOffset(), this.nso0.getCompressedSectionSize(SectionType.DATA));
-        byte[] decompressedData = new byte[this.dataSize];
-        decompressor.decompress(compressedData, decompressedData);
+        if (this.nso0.isSectionCompressed(SectionType.DATA))
+        {
+            byte[] compressedData = this.fileByteProvider.readBytes(this.nso0.getSectionFileOffset(SectionType.DATA), this.nso0.getCompressedSectionSize(SectionType.DATA));
+            decompressedData = new byte[this.dataSize];
+            decompressor.decompress(compressedData, decompressedData);
+        }
+        else
+        {
+            decompressedData = this.fileByteProvider.readBytes(this.nso0.getSectionFileOffset(SectionType.DATA), this.dataSize);
+        }
+        
         System.arraycopy(decompressedData, 0, full, this.dataOffset, this.dataSize);
         this.memoryByteProvider = new ByteArrayProvider(full);
     }

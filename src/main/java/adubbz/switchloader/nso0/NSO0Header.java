@@ -9,6 +9,7 @@ package adubbz.switchloader.nso0;
 import java.io.IOException;
 
 import adubbz.switchloader.common.SectionType;
+import adubbz.switchloader.kip1.KIP1SectionHeader;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 
@@ -76,6 +77,24 @@ public class NSO0Header
         }
     }
     
+    public long getSectionFileOffset(SectionType type)
+    {
+        switch (type)
+        {
+            case TEXT:
+                return this.textHeader.getFileOffset();
+                
+            case RODATA:
+                return this.rodataHeader.getFileOffset();
+                
+            case DATA:
+                return this.dataHeader.getFileOffset();
+        
+            default:
+                return 0;
+        }
+    }
+    
     public int getCompressedSectionSize(SectionType type)
     {
         switch (type)
@@ -95,6 +114,17 @@ public class NSO0Header
             default:
                 return 0;
         }
+    }
+    
+    public boolean isSectionCompressed(SectionType type)
+    {
+        int index = type.ordinal();
+        
+        if (index > 2)
+            return false;
+        
+        int flagMask = 1 << index;
+        return (this.flags & flagMask) > 0;
     }
     
     public int getBssSize()

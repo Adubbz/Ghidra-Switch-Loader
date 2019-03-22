@@ -64,7 +64,7 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         
         if (this.kip1.isSectionCompressed(SectionType.TEXT))
         {
-            byte[] compressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), textHeader.getCompressedSize());
+            byte[] compressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), this.kip1.getCompressedSectionSize(SectionType.TEXT));
             decompressedText = new byte[this.textSize];
             ByteUtil.kip1BlzDecompress(decompressedText, compressedText);
         }
@@ -77,7 +77,7 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         
         if (this.kip1.isSectionCompressed(SectionType.RODATA))
         {
-            byte[] compressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), rodataHeader.getCompressedSize());
+            byte[] compressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), this.kip1.getCompressedSectionSize(SectionType.RODATA));
             decompressedRodata = new byte[this.rodataSize];
             ByteUtil.kip1BlzDecompress(decompressedRodata, compressedRodata);
         }
@@ -90,7 +90,7 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         
         if (this.kip1.isSectionCompressed(SectionType.DATA))
         {
-            byte[] compressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), dataHeader.getCompressedSize());
+            byte[] compressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), this.kip1.getCompressedSectionSize(SectionType.DATA));
             decompressedData = new byte[this.dataSize];
             ByteUtil.kip1BlzDecompress(decompressedData, compressedData);
         }

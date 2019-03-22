@@ -70,6 +70,11 @@ public class KIP1Header
         }
     }
     
+    public int getCompressedSectionSize(SectionType type)
+    {
+        return this.sectionHeaders[type.ordinal()].getCompressedSize();
+    }
+    
     public boolean isSectionCompressed(SectionType type)
     {
         int index = type.ordinal();
