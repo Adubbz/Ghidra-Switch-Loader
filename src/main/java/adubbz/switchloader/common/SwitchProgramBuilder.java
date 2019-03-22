@@ -147,7 +147,6 @@ public abstract class SwitchProgramBuilder
             
             this.createDynSymBlock();
 
-            // TODO: .plt here
             this.stringTable = this.setupStringTable();
             this.symbolTable = this.setupSymbolTable();
             this.setupRelocations();
@@ -352,7 +351,9 @@ public abstract class SwitchProgramBuilder
             {
                 if (reloc.sym == null) 
                 {
-                    Msg.error(this, String.format("Error: Relocation at %x failed", target.getOffset()));
+                    // Ignore these sorts of errors, the IDA loader fails on some relocations too.
+                    // It doesn't appear to be a Ghidra specific issue.
+                    //Msg.error(this, String.format("Error: Relocation at %x failed", target.getOffset()));
                 } 
                 else 
                 {
