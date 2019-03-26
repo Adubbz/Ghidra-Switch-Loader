@@ -16,105 +16,67 @@ import ghidra.util.Msg;
 
 public class ByteUtil 
 {
-    public static byte[] kip1BlzDecompress(byte[] compressed)
+    public static byte[] kip1BlzDecompress(byte[] compressed, int decompressedSize)
     {
-        int compressedSize = ByteBuffer.wrap(compressed, compressed.length - 12, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
-        int initIndex = ByteBuffer.wrap(compressed, compressed.length - 8, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
         int uncompressedAdditionalSize = ByteBuffer.wrap(compressed, compressed.length - 4, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
-        int decompressedSize = compressed.length + uncompressedAdditionalSize;
-        byte[] decompressed = new byte[decompressedSize];
+        int headerSize = ByteBuffer.wrap(compressed, compressed.length - 8, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
+        int compressedAndHeaderSize = ByteBuffer.wrap(compressed, compressed.length - 12, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
         
-        // Copy the compressed array to the decompressed array
-        System.arraycopy(compressed, 0, decompressed, 0, compressed.length);
-        Arrays.fill(decompressed, compressed.length, decompressed.length - 1, (byte)0);
+        int compressedStart = compressed.length - compressedAndHeaderSize;
+        int compressedOffset = compressedAndHeaderSize - headerSize;
+        int outOffset = compressedAndHeaderSize + uncompressedAdditionalSize;
         
-        // Homebrew kips often have a mismatch. This is probably a bug with elf2kip.
-        if (compressed.length != compressedSize)
+        byte out[] = new byte[decompressedSize];
+        System.arraycopy(compressed, 0, out, 0, compressed.length);
+        
+        while (outOffset > 0)
         {
-            Msg.warn(null, String.format("Compressed size mismatch. Given 0x%x bytes, expected 0x%x.", compressed.length, compressedSize));
-            
-            if (compressed.length < compressedSize)
-                throw new IllegalArgumentException("In buffer is too small!");
-            
-            byte[] tmp = new byte[compressedSize];
-            System.arraycopy(compressed, compressed.length - compressedSize, tmp, 0, compressedSize);
-            compressed = tmp;
-        }
-        
-        if (compressedSize + uncompressedAdditionalSize == 0)
-        {
-            throw new IllegalArgumentException("Compressed size is zero!");
-        }
-        
-        int index = compressedSize - initIndex;
-        int outIndex = decompressedSize;
-        byte control = 0;
-        
-        while (outIndex > 0)
-        {
-            index--;
-            // Wrap back around
-            if (index < 0) index = compressed.length - 1;
-            
-            control = compressed[index];
+            byte control = out[compressedStart + --compressedOffset];
             
             for (int i = 0; i < 8; i++)
             {
                 if ((control & 0x80) > 0)
                 {
-                    if (index < 2)
-                    {
+                    if (compressedOffset < 2)
                         throw new IndexOutOfBoundsException("Compression out of bounds!");
-                    }
                     
-                    index -= 2;
+                    compressedOffset -= 2;
                     
                     // Java has no concept of unsigned bytes, so when converting them to ints it'll think they're sometimes
                     // negative. We obviously don't want this.
-                    int segmentOffset = Byte.toUnsignedInt(compressed[index]) | (Byte.toUnsignedInt(compressed[index + 1]) << 8);
-                    int segmentSize = ((segmentOffset >> 12) & 0xF) + 3;
+                    int segmentValue = (Byte.toUnsignedInt(out[compressedStart + compressedOffset + 1]) << 8) | Byte.toUnsignedInt(out[compressedStart + compressedOffset]);
+                    int segmentSize = ((segmentValue >> 12) & 0xF) + 3;
+                    int segmentOffset = (segmentValue & 0x0FFF) + 3;
                     
-                    segmentOffset &= 0x0FFF;
-                    segmentOffset += 2;
+                    if (outOffset < segmentSize)
+                    {
+                        /* Kernel restricts segment copy to stay in bounds. */
+                        segmentSize = outOffset;
+                    }
                     
-                    if (outIndex < segmentSize)
-                        throw new IndexOutOfBoundsException("Compression out of bounds!");
+                    outOffset -= segmentSize;
                     
                     for (int j = 0; j < segmentSize; j++)
                     {
-                        if (outIndex + segmentOffset >= decompressedSize)
-                        {
-                            throw new IndexOutOfBoundsException("Compression out of bounds!");
-                        }
-                        
-                        byte data = decompressed[outIndex + segmentOffset];
-                        outIndex--;
-                        decompressed[outIndex] = data;
+                        out[compressedStart + outOffset + j] = out[compressedStart + outOffset + j + segmentOffset];
                     }
                 }
                 else
                 {
-                    if (outIndex < 1)
+                    if (compressedOffset < 1)
                         throw new IndexOutOfBoundsException("Compression out of bounds!");
                     
-                    outIndex--;
-                    index--;
-                    
-                    // Wrap back around
-                    if (index < 0) index = compressed.length - 1;
-                    
-                    decompressed[outIndex] = compressed[index];
+                    out[compressedStart + --outOffset] = out[compressedStart + --compressedOffset];
                 }
                 
                 control <<= 1;
-                control &= 0xFF;
                 
-                if (outIndex == 0)
+                if (outOffset == 0)
                     break;
             }
         }
         
-        return decompressed;
+        return out;
     }
     
     public static void logBytes(byte[] data)

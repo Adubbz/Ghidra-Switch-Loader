@@ -65,7 +65,7 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         if (this.kip1.isSectionCompressed(SectionType.TEXT))
         {
             byte[] compressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), this.kip1.getCompressedSectionSize(SectionType.TEXT));
-            decompressedText = ByteUtil.kip1BlzDecompress(compressedText);
+            decompressedText = ByteUtil.kip1BlzDecompress(compressedText, this.textSize);
         }
         else
         {
@@ -77,7 +77,7 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         if (this.kip1.isSectionCompressed(SectionType.RODATA))
         {
             byte[] compressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), this.kip1.getCompressedSectionSize(SectionType.RODATA));
-            decompressedRodata = ByteUtil.kip1BlzDecompress(compressedRodata);
+            decompressedRodata = ByteUtil.kip1BlzDecompress(compressedRodata, this.rodataSize);
         }
         else
         {
@@ -89,7 +89,7 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         if (this.kip1.isSectionCompressed(SectionType.DATA))
         {
             byte[] compressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), this.kip1.getCompressedSectionSize(SectionType.DATA));
-            decompressedData = ByteUtil.kip1BlzDecompress(compressedData);
+            decompressedData = ByteUtil.kip1BlzDecompress(compressedData, this.dataSize);
         }
         else
         {
