@@ -9,9 +9,7 @@ package adubbz.switchloader.util;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 
-import adubbz.switchloader.common.SectionType;
 import ghidra.util.Msg;
 
 public class ByteUtil 

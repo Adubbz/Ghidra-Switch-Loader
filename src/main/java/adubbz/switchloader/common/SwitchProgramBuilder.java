@@ -130,8 +130,19 @@ public abstract class SwitchProgramBuilder
             this.memBlockHelper.addDeferredSection(".rodata", this.rodataOffset, rodataInputStream, this.rodataSize, true, false, false);
             this.memBlockHelper.addDeferredSection(".data", this.dataOffset, dataInputStream, this.dataSize, true, true, false);
             
-            // Load MOD0
-            this.loadMod0();
+            try
+            {
+                this.loadMod0();
+            }
+            catch (InvalidMagicException | IllegalArgumentException e)
+            {
+                e.printStackTrace();
+                
+                // We can't create .dynamic, so work with what we've got.
+                this.memBlockHelper.finalizeSections();
+                return;
+            }
+            
             this.dummyElfHeader = new DummyElfHeader();
             
             // Create the dynamic table and its memory block
@@ -162,6 +173,8 @@ public abstract class SwitchProgramBuilder
             e.printStackTrace();
         }
         
+        // Ensure memory blocks are ordered from first to last.
+        // Normally they are ordered by the order they are added.
         UIUtil.sortProgramTree(this.program);
     }
     
@@ -170,6 +183,10 @@ public abstract class SwitchProgramBuilder
     protected void loadMod0() throws IOException
     {
         int mod0Offset = this.memoryBinaryReader.readInt(this.textOffset + 4);
+        
+        if (Integer.toUnsignedLong(mod0Offset) >= this.memoryByteProvider.length())
+            throw new IllegalArgumentException("Mod0 offset is outside the binary!");
+        
         this.mod0 = new MOD0Header(this.memoryBinaryReader, mod0Offset, mod0Offset);
     }
     

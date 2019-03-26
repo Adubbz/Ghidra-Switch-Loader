@@ -8,6 +8,7 @@ package adubbz.switchloader.nso0;
 
 import java.io.IOException;
 
+import adubbz.switchloader.common.InvalidMagicException;
 import adubbz.switchloader.common.SectionType;
 import adubbz.switchloader.kip1.KIP1SectionHeader;
 import ghidra.app.util.bin.BinaryReader;
@@ -29,9 +30,15 @@ public class NSO0Header
     private int compressedRodataSize;
     private int compressedDataSize;
     
-    public NSO0Header(BinaryReader reader)
+    public NSO0Header(BinaryReader reader, int readerOffset)
     {
+        long prevPointerIndex = reader.getPointerIndex();
+        
+        reader.setPointerIndex(readerOffset);
         this.readHeader(reader);
+        
+        // Restore the previous pointer index
+        reader.setPointerIndex(prevPointerIndex);
     }
     
     private void readHeader(BinaryReader reader)
@@ -39,6 +46,10 @@ public class NSO0Header
         try 
         {
             this.magic = reader.readNextAsciiString(4);
+            
+            if (!this.magic.equals("NSO0"))
+                throw new InvalidMagicException("NSO0");
+            
             this.version = reader.readNextInt();
             reader.readNextInt(); // Reserved
             this.flags = reader.readNextInt();

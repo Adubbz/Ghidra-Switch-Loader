@@ -8,6 +8,7 @@ package adubbz.switchloader.nro0;
 
 import java.io.IOException;
 
+import adubbz.switchloader.common.InvalidMagicException;
 import adubbz.switchloader.common.SectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
@@ -28,9 +29,15 @@ public class NRO0Header
     private NRO0SectionHeader dynstr;
     private NRO0SectionHeader dynsym;
 
-    public NRO0Header(BinaryReader reader)
+    public NRO0Header(BinaryReader reader, int readerOffset)
     {
+        long prevPointerIndex = reader.getPointerIndex();
+        
+        reader.setPointerIndex(readerOffset);
         this.readHeader(reader);
+        
+        // Restore the previous pointer index
+        reader.setPointerIndex(prevPointerIndex);
     }
 
     private void readHeader(BinaryReader reader)
@@ -41,6 +48,10 @@ public class NRO0Header
             this.mod0Offset = reader.readNextInt();
             reader.readNextLong(); // Padding
             this.magic = reader.readNextAsciiString(4);
+            
+            if (!this.magic.equals("NRO0"))
+                throw new InvalidMagicException("NRO0");
+            
             this.version = reader.readNextInt();
             this.size = reader.readNextInt();
             this.flags = reader.readNextInt();

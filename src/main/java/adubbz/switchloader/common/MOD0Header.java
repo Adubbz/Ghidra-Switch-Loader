@@ -38,6 +38,10 @@ public class MOD0Header
         try 
         {
             this.magic = reader.readNextAsciiString(4);
+            
+            if (!this.magic.equals("MOD0"))
+                throw new InvalidMagicException("MOD0");
+            
             this.dynamicOffset = mod0StartOffset + reader.readNextInt();
             this.bssStartOffset = mod0StartOffset + reader.readNextInt();
             this.bssEndOffset = mod0StartOffset + reader.readNextInt();

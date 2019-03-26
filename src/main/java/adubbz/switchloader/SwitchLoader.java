@@ -21,6 +21,7 @@ import adubbz.switchloader.nro0.NRO0ProgramBuilder;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.app.util.bin.ByteProviderWrapper;
 import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.BinaryLoader;
@@ -49,32 +50,31 @@ public class SwitchLoader extends BinaryLoader
     {
         List<LoadSpec> loadSpecs = new ArrayList<>();
         BinaryReader reader = new BinaryReader(provider, true);
-        String magic = reader.readNextAsciiString(4);
-
+        String magic_0x0 = reader.readAsciiString(0, 4);
+        String magic_0x10 = reader.readAsciiString(0x10, 4);
+        
         reader.setPointerIndex(0);
 
-        if (magic.equals("KIP1")) 
+        if (magic_0x0.equals("KIP1")) 
         {
             this.binaryType = BinaryType.KIP1;
         }
-        else if (magic.equals("NSO0"))
+        else if (magic_0x0.equals("NSO0"))
         {
             this.binaryType = BinaryType.NSO0;
         }
-        else
+        else if (magic_0x10.equals("NRO0"))
         {
-            // Check for NRO
-            reader.readNextInt(); // Reserved
-            reader.readNextInt(); // MOD0 offset
-            reader.readNextLong(); // Padding
-            magic = reader.readNextAsciiString(4);
-            reader.setPointerIndex(0);
-            if (magic.equals("NRO0")) 
-            {
-                this.binaryType = BinaryType.NRO0;
-            }
-            else return loadSpecs;
+            this.binaryType = BinaryType.NRO0;
         }
+        else if (magic_0x10.equals("KIP1"))
+        {
+            // Note: This is kinda a bad way of determining this, but for now it gets the job done
+            // and I don't believe there are any clashes.
+            this.binaryType = BinaryType.SX_KIP1; 
+        }
+        else
+            return loadSpecs;
 
         loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair("AARCH64:LE:64:v8A", "default"), true));
 
@@ -118,24 +118,38 @@ public class SwitchLoader extends BinaryLoader
             MessageLog messageLog, Program program, TaskMonitor monitor, MemoryConflictHandler memoryConflictHandler) 
                     throws IOException
     {
-        BinaryReader reader = new BinaryReader(provider, true);
+        BinaryReader reader;
 
-        if (this.binaryType == BinaryType.KIP1)
+        if (this.binaryType == BinaryType.SX_KIP1)
         {
-            KIP1Header header = new KIP1Header(reader);
+            ByteProvider offsetProvider = new ByteProviderWrapper(provider, 0x10, provider.length() - 0x10);
+            reader = new BinaryReader(offsetProvider, true);
+            
+            KIP1Header header = new KIP1Header(reader, 0x0);
             KIP1ProgramBuilder.loadKIP1(header, provider, program, memoryConflictHandler, monitor);
         }
-        else if (this.binaryType == BinaryType.NSO0)
+        else
         {
-            NSO0Header header = new NSO0Header(reader);
-            NSO0ProgramBuilder.loadNSO0(header, provider, program, memoryConflictHandler, monitor);
-        }
-        else if (this.binaryType == BinaryType.NRO0)
-        {
-            NRO0Header header = new NRO0Header(reader);
-            NRO0ProgramBuilder.loadNRO0(header, provider, program, memoryConflictHandler, monitor);
-        }
+            reader = new BinaryReader(provider, true);
+            
+            if (this.binaryType == BinaryType.KIP1)
+            {
+                KIP1Header header = new KIP1Header(reader, 0x0);
+                KIP1ProgramBuilder.loadKIP1(header, provider, program, memoryConflictHandler, monitor);
+            }
 
+            else if (this.binaryType == BinaryType.NSO0)
+            {
+                NSO0Header header = new NSO0Header(reader, 0x0);
+                NSO0ProgramBuilder.loadNSO0(header, provider, program, memoryConflictHandler, monitor);
+            }
+            else if (this.binaryType == BinaryType.NRO0)
+            {
+                NRO0Header header = new NRO0Header(reader, 0x0);
+                NRO0ProgramBuilder.loadNRO0(header, provider, program, memoryConflictHandler, monitor);
+            }
+        }
+        
         return true;
     }
 
@@ -159,6 +173,16 @@ public class SwitchLoader extends BinaryLoader
 
     private static enum BinaryType
     {
-        KIP1, NSO0, NRO0
+        KIP1("Kernel Initial Process"), 
+        NSO0("Nintendo Shared Object"), 
+        NRO0("Nintendo Relocatable Object"),
+        SX_KIP1("Gateway Kernel Initial Process");
+        
+        public final String name;
+        
+        private BinaryType(String name)
+        {
+            this.name = name;
+        }
     }
 }

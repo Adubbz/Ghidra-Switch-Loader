@@ -8,6 +8,7 @@ package adubbz.switchloader.kip1;
 
 import java.io.IOException;
 
+import adubbz.switchloader.common.InvalidMagicException;
 import adubbz.switchloader.common.SectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
@@ -24,9 +25,15 @@ public class KIP1Header
     
     private KIP1SectionHeader[] sectionHeaders = new KIP1SectionHeader[6];
     
-    public KIP1Header(BinaryReader reader)
+    public KIP1Header(BinaryReader reader, int readerOffset)
     {
+        long prevPointerIndex = reader.getPointerIndex();
+        
+        reader.setPointerIndex(readerOffset);
         this.readHeader(reader);
+        
+        // Restore the previous pointer index
+        reader.setPointerIndex(prevPointerIndex);
     }
     
     private void readHeader(BinaryReader reader)
@@ -34,6 +41,10 @@ public class KIP1Header
         try 
         {
             this.magic = reader.readNextAsciiString(4);
+            
+            if (!this.magic.equals("KIP1"))
+                throw new InvalidMagicException("KIP1");
+            
             this.name = reader.readNextAsciiString(12);
             this.tid = reader.readNextLong();
             this.processCategory = reader.readNextInt();
