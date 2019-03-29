@@ -543,7 +543,7 @@ public abstract class SwitchProgramBuilder
         }
     }
     
-    class Relocation 
+    private static class Relocation 
     {
         public Relocation(long offset, long r_type, ElfSymbol sym, long addend) 
         {
@@ -559,7 +559,7 @@ public abstract class SwitchProgramBuilder
         long addend;
     }
     
-    class PltEntry
+    private static class PltEntry
     {
         long off;
         long target;
