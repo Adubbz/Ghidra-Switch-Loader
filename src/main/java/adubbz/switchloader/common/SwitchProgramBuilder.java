@@ -55,6 +55,7 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Library;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.ExternalLocation;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
@@ -99,6 +100,7 @@ public abstract class SwitchProgramBuilder
     protected long symbolEntrySize;
     protected long symbolTableSize;
     
+    protected int undefSymbolCount;
     
     protected SwitchProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
@@ -167,8 +169,35 @@ public abstract class SwitchProgramBuilder
             
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(baseAddress + this.mod0.getBssStartOffset()), this.mod0.getBssSize(), "", null, true, true, false);
+        
+            // Create the fake EXTERNAL block after everything else
+            long lastAddrOff = this.baseAddress; 
+            
+            for (MemoryBlock block : this.program.getMemory().getBlocks())
+            {
+                if (block.getEnd().getOffset() > lastAddrOff)
+                    lastAddrOff = block.getEnd().getOffset();
+            }
+            
+            int undefEntrySize = 8;
+            long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 8 so we don't end up on the "end" symbol
+            
+            this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
+            
+            for (ElfSymbol elfSymbol : symbolTable.getSymbols()) 
+            {
+                String symName = elfSymbol.getNameAsString();
+                
+                if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
+                {
+                    Address address = this.aSpace.getAddress(externalBlockAddrOffset);
+                    this.evaluateElfSymbol(elfSymbol, address, false);
+                    program.getExternalManager().addExtFunction(Library.UNKNOWN, symName, null, SourceType.IMPORTED);
+                    externalBlockAddrOffset += undefEntrySize;
+                }
+            }
         } 
-        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | DataTypeConflictException | SecurityException | IllegalArgumentException | MemoryAccessException | InvalidInputException | NoSuchMethodException | IllegalAccessException | InvocationTargetException | CodeUnitInsertionException e) 
+        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | DataTypeConflictException | SecurityException | IllegalArgumentException | MemoryAccessException | InvalidInputException | NoSuchMethodException | IllegalAccessException | InvocationTargetException | CodeUnitInsertionException | DuplicateNameException e) 
         {
             e.printStackTrace();
         }
@@ -238,9 +267,18 @@ public abstract class SwitchProgramBuilder
         
         for (ElfSymbol elfSymbol : symbolTable.getSymbols()) 
         {
-            Address address = this.aSpace.getAddress(this.baseAddress + elfSymbol.getValue());
             String symName = elfSymbol.getNameAsString();
-            this.evaluateElfSymbol(elfSymbol, address, false);
+
+            if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
+            {
+                // NOTE: We handle adding these symbols later
+                this.undefSymbolCount++;
+            }
+            else
+            {
+                Address address = this.aSpace.getAddress(this.baseAddress + elfSymbol.getValue());
+                this.evaluateElfSymbol(elfSymbol, address, false);
+            }
         }
         
         return symbolTable;
@@ -350,8 +388,6 @@ public abstract class SwitchProgramBuilder
             if (good)
                 this.memBlockHelper.addSection(".got", pltGotEnd, this.memoryByteProvider.getInputStream(pltGotEnd), gotEnd - pltGotEnd, true, false, false);
         }
-        
-        // TODO: Handle imports
     }
     
     protected void performRelocations() throws MemoryAccessException, InvalidInputException, AddressOutOfBoundsException
@@ -400,6 +436,23 @@ public abstract class SwitchProgramBuilder
                 // TODO: Mark as func
                 this.createSymbol(this.aSpace.getAddress(addr), name, false, false, null);
             }
+        }
+    }
+    
+    private void createExternalBlock(Address addr, long size) 
+    {
+        try 
+        {
+            MemoryBlock block = this.program.getMemory().createUninitializedBlock("EXTERNAL", addr, size, false);
+
+            // assume any value in external is writable.
+            block.setWrite(true);
+            block.setSourceName("Switch Loader");
+            block.setComment("NOTE: This block is artificial and is used to make relocations work correctly");
+        }
+        catch (Exception e) 
+        {
+            Msg.error(this, "Error creating external memory block: " + " - " + e.getMessage());
         }
     }
     
