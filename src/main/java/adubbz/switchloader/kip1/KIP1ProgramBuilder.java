@@ -15,6 +15,7 @@ import adubbz.switchloader.util.ByteUtil;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MemoryConflictHandler;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSpace;
@@ -36,6 +37,15 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
     {
         KIP1ProgramBuilder builder = new KIP1ProgramBuilder(header, provider, program, conflictHandler);
         builder.load(monitor);
+    }
+    
+    @Override
+    protected void load(TaskMonitor monitor)
+    {
+        super.load(monitor);
+        
+        // KIP1s always start with a branch instruction at the start of their text
+        this.createEntryFunction("entry", this.baseAddress, monitor);
     }
     
     @Override

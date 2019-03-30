@@ -81,7 +81,7 @@ public abstract class SwitchProgramBuilder
     protected Program program;
     protected MemoryBlockUtil mbu;
     
-    long baseAddress;
+    protected long baseAddress;
     protected AddressSpace aSpace;
     protected MemoryBlockHelper memBlockHelper;
 
@@ -515,9 +515,42 @@ public abstract class SwitchProgramBuilder
         return dynamicLibraryNames;
     }
     
+    protected Address createEntryFunction(String name, long entryAddr, TaskMonitor monitor) 
+    {
+        Address entryAddress = this.aSpace.getAddress(entryAddr);
+
+        // TODO: Entry may refer to a pointer - make sure we have execute permission
+        MemoryBlock block = this.program.getMemory().getBlock(entryAddress);
+        
+        if (block == null || !block.isExecute()) 
+        {
+            return entryAddress;
+        }
+
+        Function function = program.getFunctionManager().getFunctionAt(entryAddress);
+        
+        if (function != null) 
+        {
+            program.getSymbolTable().addExternalEntryPoint(entryAddress);
+            return entryAddress; // symbol-based function already created
+        }
+
+        try 
+        {
+            createOneByteFunction(name, entryAddress, true);
+        }
+        catch (Exception e) 
+        {
+            Msg.error(this, "Could not create symbol at entry point: " + e);
+        }
+
+        return entryAddress;
+    }
+    
     private Set<Long> processRelocations(Program program, BinaryReader provider, List<Relocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
     {
         Set<Long> locations = new HashSet<Long>();
+        
         for (long i = 0; i < relsz / 0x18; i++) 
         {
             long offset = provider.readLong(rel + i * 0x18);
