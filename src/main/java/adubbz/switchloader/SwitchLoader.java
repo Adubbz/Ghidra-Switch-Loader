@@ -126,7 +126,7 @@ public class SwitchLoader extends BinaryLoader
             reader = new BinaryReader(offsetProvider, true);
             
             KIP1Header header = new KIP1Header(reader, 0x0);
-            KIP1ProgramBuilder.loadKIP1(header, provider, program, memoryConflictHandler, monitor);
+            KIP1ProgramBuilder.loadKIP1(header, offsetProvider, program, memoryConflictHandler, monitor);
         }
         else
         {
