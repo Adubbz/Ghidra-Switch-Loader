@@ -423,8 +423,7 @@ public abstract class SwitchProgramBuilder
             } 
             else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_RELATIVE) 
             {
-                long target_val = program.getMemory().getLong(target);
-                program.getMemory().setLong(target, target_val + this.baseAddress);
+                program.getMemory().setLong(target, this.baseAddress + reloc.addend);
             } 
             else 
             {
