@@ -31,6 +31,7 @@ import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
 import ghidra.app.util.bin.format.elf.ElfConstants;
+import ghidra.app.util.bin.format.elf.ElfDynamic;
 import ghidra.app.util.bin.format.elf.ElfDynamicTable;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
 import ghidra.app.util.bin.format.elf.ElfHeader;
@@ -47,16 +48,19 @@ import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.TerminatedStringDataType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Library;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.ExternalLocation;
+import ghidra.program.model.symbol.ExternalManager;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
@@ -179,8 +183,8 @@ public abstract class SwitchProgramBuilder
                     lastAddrOff = block.getEnd().getOffset();
             }
             
-            int undefEntrySize = 8;
-            long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 8 so we don't end up on the "end" symbol
+            int undefEntrySize = 1; // We create fake 1 byte functions for imports
+            long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
             
             this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
             
@@ -191,11 +195,12 @@ public abstract class SwitchProgramBuilder
                 if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
                 {
                     Address address = this.aSpace.getAddress(externalBlockAddrOffset);
-                    this.evaluateElfSymbol(elfSymbol, address, false);
-                    program.getExternalManager().addExtFunction(Library.UNKNOWN, symName, null, SourceType.IMPORTED);
+                    this.evaluateElfSymbol(elfSymbol, address, true);
                     externalBlockAddrOffset += undefEntrySize;
                 }
             }
+            
+            this.processImports(monitor);
         } 
         catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException | IOException | NotFoundException | DataTypeConflictException | SecurityException | IllegalArgumentException | MemoryAccessException | InvalidInputException | NoSuchMethodException | IllegalAccessException | InvocationTargetException | CodeUnitInsertionException | DuplicateNameException e) 
         {
@@ -253,7 +258,7 @@ public abstract class SwitchProgramBuilder
         return stringTable;
     }
     
-    protected ElfSymbolTable setupSymbolTable() throws InvalidInputException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException
+    protected ElfSymbolTable setupSymbolTable() throws InvalidInputException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, DuplicateNameException
     {
         Method m = ElfSymbolTable.class.getDeclaredMethod("createElfSymbolTable", FactoryBundledWithBinaryReader.class, ElfHeader.class, ElfSectionHeader.class, long.class, long.class, 
                 long.class, long.class, ElfStringTable.class, boolean.class);
@@ -456,6 +461,60 @@ public abstract class SwitchProgramBuilder
         }
     }
     
+    private void processImports(TaskMonitor monitor) 
+    {
+        if (monitor.isCancelled())
+            return;
+
+        monitor.setMessage("Processing imports...");
+
+        ExternalManager extManager = program.getExternalManager();
+        if (dynamicTable != null) 
+        {
+            String[] neededLibs = this.getDynamicLibraryNames();
+            for (String neededLib : neededLibs) {
+                try {
+                    extManager.setExternalPath(neededLib, null, false);
+                }
+                catch (InvalidInputException e) {
+                    Msg.error(this, "Bad library name: " + neededLib);
+                }
+            }
+        }
+    }
+    
+    private String[] getDynamicLibraryNames() 
+    {
+        if (this.dynamicTable == null) 
+        {
+            return new String[0];
+        }
+
+        String[] dynamicLibraryNames;
+        ElfDynamic[] needed = dynamicTable.getDynamics(ElfDynamicType.DT_NEEDED);
+        dynamicLibraryNames = new String[needed.length];
+        for (int i = 0; i < needed.length; i++) 
+        {
+            if (this.stringTable != null) 
+            {
+                try 
+                {
+                    dynamicLibraryNames[i] =
+                        this.stringTable.readString(this.memoryBinaryReader, needed[i].getValue());
+                }
+                catch (Exception e) 
+                {
+                    // ignore
+                }
+            }
+            if (dynamicLibraryNames[i] == null) {
+                dynamicLibraryNames[i] = "UNK_LIB_NAME_" + i;
+            }
+        }
+        
+        return dynamicLibraryNames;
+    }
+    
     private Set<Long> processRelocations(Program program, BinaryReader provider, List<Relocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
     {
         Set<Long> locations = new HashSet<Long>();
@@ -496,7 +555,7 @@ public abstract class SwitchProgramBuilder
         return d.getLength();
     }
     
-    private void evaluateElfSymbol(ElfSymbol elfSymbol, Address address, boolean isFakeExternal) throws InvalidInputException 
+    private void evaluateElfSymbol(ElfSymbol elfSymbol, Address address, boolean isFakeExternal) throws InvalidInputException, DuplicateNameException 
     {
         if (elfSymbol.isSection()) {
             // Do not add section symbols to program symbol table
@@ -527,6 +586,57 @@ public abstract class SwitchProgramBuilder
         {
             program.getSymbolTable().addExternalEntryPoint(address);
         }
+        
+        if (elfSymbol.getType() == ElfSymbol.STT_FUNC) 
+        {
+            Function existingFunction = program.getFunctionManager().getFunctionAt(address);
+            if (existingFunction == null) {
+                Function f = createOneByteFunction(null, address, false);
+                if (f != null) {
+                    if (isFakeExternal && !f.isThunk()) {
+                        ExternalLocation extLoc = program.getExternalManager().addExtFunction(Library.UNKNOWN, name, null, SourceType.IMPORTED);
+                        f.setThunkedFunction(extLoc.getFunction());
+                        // revert thunk function symbol to default source
+                        Symbol s = f.getSymbol();
+                        if (s.getSource() != SourceType.DEFAULT) {
+                            program.getSymbolTable().removeSymbolSpecial(f.getSymbol());
+                        }
+                    }
+                }
+            }
+        }    
+    }
+    
+    public Function createOneByteFunction(String name, Address address, boolean isEntry) 
+    {
+        Function function = null;
+        try 
+        {
+            FunctionManager functionMgr = program.getFunctionManager();
+            function = functionMgr.getFunctionAt(address);
+            if (function == null) {
+                function = functionMgr.createFunction(null, address, new AddressSet(address), SourceType.IMPORTED);
+            }
+        }
+        catch (Exception e) 
+        {
+            Msg.error(this, "Error while creating function at " + address + ": " + e.getMessage());
+        }
+
+        try 
+        {
+            if (name != null) 
+            {
+                createSymbol(address, name, true, false, null);
+            }
+            if (isEntry) {
+                program.getSymbolTable().addExternalEntryPoint(address);
+            }
+        }
+        catch (Exception e) {
+            Msg.error(this, "Error while creating symbol " + name + " at " + address + ": " + e.getMessage());
+        }
+        return function;
     }
     
     public Symbol createSymbol(Address addr, String name, boolean isPrimary, boolean pinAbsolute, Namespace namespace) throws InvalidInputException 
