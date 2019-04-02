@@ -9,7 +9,7 @@ package adubbz.switchloader.nro0;
 import java.io.IOException;
 
 import adubbz.switchloader.common.InvalidMagicException;
-import adubbz.switchloader.common.SectionType;
+import adubbz.switchloader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 
@@ -72,7 +72,7 @@ public class NRO0Header
         }
     }
 
-    public NRO0SectionHeader getSectionHeader(SectionType type)
+    public NRO0SectionHeader getSectionHeader(NXOSectionType type)
     {
         switch (type)
         {

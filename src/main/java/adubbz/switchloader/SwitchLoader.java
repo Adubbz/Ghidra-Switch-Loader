@@ -118,35 +118,25 @@ public class SwitchLoader extends BinaryLoader
             MessageLog messageLog, Program program, TaskMonitor monitor, MemoryConflictHandler memoryConflictHandler) 
                     throws IOException
     {
-        BinaryReader reader;
-
         if (this.binaryType == BinaryType.SX_KIP1)
         {
             ByteProvider offsetProvider = new ByteProviderWrapper(provider, 0x10, provider.length() - 0x10);
-            reader = new BinaryReader(offsetProvider, true);
-            
-            KIP1Header header = new KIP1Header(reader, 0x0);
-            KIP1ProgramBuilder.loadKIP1(header, offsetProvider, program, memoryConflictHandler, monitor);
+            KIP1ProgramBuilder.loadKIP1(offsetProvider, program, memoryConflictHandler, monitor);
         }
         else
         {
-            reader = new BinaryReader(provider, true);
-            
             if (this.binaryType == BinaryType.KIP1)
             {
-                KIP1Header header = new KIP1Header(reader, 0x0);
-                KIP1ProgramBuilder.loadKIP1(header, provider, program, memoryConflictHandler, monitor);
+                KIP1ProgramBuilder.loadKIP1(provider, program, memoryConflictHandler, monitor);
             }
 
             else if (this.binaryType == BinaryType.NSO0)
             {
-                NSO0Header header = new NSO0Header(reader, 0x0);
-                NSO0ProgramBuilder.loadNSO0(header, provider, program, memoryConflictHandler, monitor);
+                NSO0ProgramBuilder.loadNSO0(provider, program, memoryConflictHandler, monitor);
             }
             else if (this.binaryType == BinaryType.NRO0)
             {
-                NRO0Header header = new NRO0Header(reader, 0x0);
-                NRO0ProgramBuilder.loadNRO0(header, provider, program, memoryConflictHandler, monitor);
+                NRO0ProgramBuilder.loadNRO0( provider, program, memoryConflictHandler, monitor);
             }
         }
         

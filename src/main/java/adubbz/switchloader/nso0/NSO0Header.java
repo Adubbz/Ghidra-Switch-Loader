@@ -9,8 +9,8 @@ package adubbz.switchloader.nso0;
 import java.io.IOException;
 
 import adubbz.switchloader.common.InvalidMagicException;
-import adubbz.switchloader.common.SectionType;
 import adubbz.switchloader.kip1.KIP1SectionHeader;
+import adubbz.switchloader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 
@@ -70,7 +70,7 @@ public class NSO0Header
         }
     }
     
-    public NSO0SectionHeader getSectionHeader(SectionType type)
+    public NSO0SectionHeader getSectionHeader(NXOSectionType type)
     {
         switch (type)
         {
@@ -88,7 +88,7 @@ public class NSO0Header
         }
     }
     
-    public long getSectionFileOffset(SectionType type)
+    public long getSectionFileOffset(NXOSectionType type)
     {
         switch (type)
         {
@@ -106,7 +106,7 @@ public class NSO0Header
         }
     }
     
-    public int getCompressedSectionSize(SectionType type)
+    public int getCompressedSectionSize(NXOSectionType type)
     {
         switch (type)
         {
@@ -127,7 +127,7 @@ public class NSO0Header
         }
     }
     
-    public boolean isSectionCompressed(SectionType type)
+    public boolean isSectionCompressed(NXOSectionType type)
     {
         int index = type.ordinal();
         

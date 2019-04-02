@@ -7,35 +7,22 @@
 
 package adubbz.switchloader.kip1;
 
-import java.io.IOException;
-
-import adubbz.switchloader.common.SectionType;
-import adubbz.switchloader.common.SwitchProgramBuilder;
-import adubbz.switchloader.util.ByteUtil;
-import ghidra.app.util.bin.ByteArrayProvider;
+import adubbz.switchloader.common.NXProgramBuilder;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.importer.MemoryConflictHandler;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressOutOfBoundsException;
-import ghidra.program.model.address.AddressOverflowException;
-import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.Program;
-import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 
-public class KIP1ProgramBuilder extends SwitchProgramBuilder
+public class KIP1ProgramBuilder extends NXProgramBuilder
 {
-    private KIP1Header kip1;
-    
-    protected KIP1ProgramBuilder(KIP1Header kip1, ByteProvider provider, Program program, MemoryConflictHandler handler)
+    protected KIP1ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
-        super(provider, program, handler);
-        this.kip1 = kip1;
+        super(program, provider, new KIP1Adapter(provider), handler);
     }
     
-    public static void loadKIP1(KIP1Header header, ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
+    public static void loadKIP1(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
     {
-        KIP1ProgramBuilder builder = new KIP1ProgramBuilder(header, provider, program, conflictHandler);
+        KIP1ProgramBuilder builder = new KIP1ProgramBuilder(provider, program, conflictHandler);
         builder.load(monitor);
     }
     
@@ -45,68 +32,6 @@ public class KIP1ProgramBuilder extends SwitchProgramBuilder
         super.load(monitor);
         
         // KIP1s always start with a branch instruction at the start of their text
-        this.createEntryFunction("entry", this.baseAddress, monitor);
-    }
-    
-    @Override
-    protected void loadDefaultSegments(TaskMonitor monitor) throws IOException, AddressOverflowException, AddressOutOfBoundsException
-    {
-        long baseAddress = 0x7100000000L;
-        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
-        
-        KIP1SectionHeader textHeader = this.kip1.getSectionHeader(SectionType.TEXT);
-        KIP1SectionHeader rodataHeader = this.kip1.getSectionHeader(SectionType.RODATA);
-        KIP1SectionHeader dataHeader = this.kip1.getSectionHeader(SectionType.DATA);
-        KIP1SectionHeader bssHeader = this.kip1.getSectionHeader(SectionType.BSS);
-        
-        this.textOffset = textHeader.getOutOffset();
-        this.rodataOffset = rodataHeader.getOutOffset();
-        this.dataOffset = dataHeader.getOutOffset();
-        this.textSize = textHeader.getDecompressedSize();
-        this.rodataSize = rodataHeader.getDecompressedSize();
-        this.dataSize = dataHeader.getDecompressedSize();
-        
-        // The data section is last, so we use its offset + decompressed size
-        byte[] full = new byte[this.dataOffset + this.dataSize];
-        byte[] decompressedText;
-        byte[] decompressedRodata;
-        byte[] decompressedData;
-        
-        if (this.kip1.isSectionCompressed(SectionType.TEXT))
-        {
-            byte[] compressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), this.kip1.getCompressedSectionSize(SectionType.TEXT));
-            decompressedText = ByteUtil.kip1BlzDecompress(compressedText, this.textSize);
-        }
-        else
-        {
-            decompressedText = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.TEXT), this.textSize);
-        }
-        
-        System.arraycopy(decompressedText, 0, full, this.textOffset, this.textSize);
-        
-        if (this.kip1.isSectionCompressed(SectionType.RODATA))
-        {
-            byte[] compressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), this.kip1.getCompressedSectionSize(SectionType.RODATA));
-            decompressedRodata = ByteUtil.kip1BlzDecompress(compressedRodata, this.rodataSize);
-        }
-        else
-        {
-            decompressedRodata = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.RODATA), this.rodataSize);
-        }
-        
-        System.arraycopy(decompressedRodata, 0, full, this.rodataOffset, this.rodataSize);
-        
-        if (this.kip1.isSectionCompressed(SectionType.DATA))
-        {
-            byte[] compressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), this.kip1.getCompressedSectionSize(SectionType.DATA));
-            decompressedData = ByteUtil.kip1BlzDecompress(compressedData, this.dataSize);
-        }
-        else
-        {
-            decompressedData = this.fileByteProvider.readBytes(this.kip1.getSectionFileOffset(SectionType.DATA), this.dataSize);
-        }
-        
-        System.arraycopy(decompressedData, 0, full, this.dataOffset, this.dataSize);
-        this.memoryByteProvider = new ByteArrayProvider(full);
+        this.createEntryFunction("entry", this.nxo.getBaseAddress(), monitor);
     }
 }

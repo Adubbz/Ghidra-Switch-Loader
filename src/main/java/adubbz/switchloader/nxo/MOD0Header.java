@@ -4,10 +4,11 @@
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-package adubbz.switchloader.common;
+package adubbz.switchloader.nxo;
 
 import java.io.IOException;
 
+import adubbz.switchloader.common.InvalidMagicException;
 import adubbz.switchloader.kip1.KIP1SectionHeader;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
@@ -22,7 +23,7 @@ public class MOD0Header
     private int ehFrameHdrEndOffset;
     private int runtimeModuleOffset;
     
-    public MOD0Header(BinaryReader reader, int readerOffset, int mod0StartOffset)
+    public MOD0Header(BinaryReader reader, int readerOffset, int mod0StartOffset) throws InvalidMagicException, IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
         
@@ -33,26 +34,19 @@ public class MOD0Header
         reader.setPointerIndex(prevPointerIndex);
     }
     
-    private void readHeader(BinaryReader reader, int mod0StartOffset)
+    private void readHeader(BinaryReader reader, int mod0StartOffset) throws InvalidMagicException, IOException
     {
-        try 
-        {
-            this.magic = reader.readNextAsciiString(4);
-            
-            if (!this.magic.equals("MOD0"))
-                throw new InvalidMagicException("MOD0");
-            
-            this.dynamicOffset = mod0StartOffset + reader.readNextInt();
-            this.bssStartOffset = mod0StartOffset + reader.readNextInt();
-            this.bssEndOffset = mod0StartOffset + reader.readNextInt();
-            this.ehFrameHdrStartOffset = mod0StartOffset + reader.readNextInt();
-            this.ehFrameHdrEndOffset = mod0StartOffset + reader.readNextInt();
-            this.runtimeModuleOffset = mod0StartOffset + reader.readNextInt();
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read MOD0 header", e);
-        }
+        this.magic = reader.readNextAsciiString(4);
+        
+        if (!this.magic.equals("MOD0"))
+            throw new InvalidMagicException("MOD0");
+        
+        this.dynamicOffset = mod0StartOffset + reader.readNextInt();
+        this.bssStartOffset = mod0StartOffset + reader.readNextInt();
+        this.bssEndOffset = mod0StartOffset + reader.readNextInt();
+        this.ehFrameHdrStartOffset = mod0StartOffset + reader.readNextInt();
+        this.ehFrameHdrEndOffset = mod0StartOffset + reader.readNextInt();
+        this.runtimeModuleOffset = mod0StartOffset + reader.readNextInt();
     }
     
     public int getDynamicOffset() 
