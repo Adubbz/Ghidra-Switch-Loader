@@ -295,9 +295,10 @@ public abstract class NXProgramBuilder
         Map<Long, String> gotNameLookup = new HashMap<>(); 
         
         // Relocations again
-        for (NXRelocation reloc : this.nxo.getPltRelocations()) 
+        for (NXRelocation reloc : this.nxo.getRelocations()) 
         {
             Address target = this.aSpace.getAddress(reloc.offset + this.nxo.getBaseAddress());
+            
             if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_GLOB_DAT ||
                 reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_JUMP_SLOT ||
                 reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_ABS64) 
