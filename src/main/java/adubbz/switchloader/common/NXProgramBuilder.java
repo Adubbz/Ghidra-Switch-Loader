@@ -6,49 +6,28 @@
  */
 package adubbz.switchloader.common;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import com.google.common.collect.ImmutableList;
 
-import adubbz.switchloader.nxo.MOD0Header;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
 import adubbz.switchloader.nxo.NXOSectionType;
-import adubbz.switchloader.util.ByteUtil;
 import adubbz.switchloader.util.UIUtil;
-import generic.continues.RethrowContinuesFactory;
 import ghidra.app.cmd.label.SetLabelPrimaryCmd;
 import ghidra.app.util.MemoryBlockUtil;
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
-import ghidra.app.util.bin.format.elf.ElfConstants;
-import ghidra.app.util.bin.format.elf.ElfDynamic;
-import ghidra.app.util.bin.format.elf.ElfDynamicTable;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
-import ghidra.app.util.bin.format.elf.ElfHeader;
-import ghidra.app.util.bin.format.elf.ElfSectionHeader;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbol;
-import ghidra.app.util.bin.format.elf.ElfSymbolTable;
-import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
-import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
 import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.framework.store.LockException;
@@ -148,12 +127,11 @@ public abstract class NXProgramBuilder
             this.setupSymbolTable();
             this.setupRelocations();
             this.memBlockHelper.finalizeSections();
+            this.setupImports(monitor);
             this.performRelocations();
             
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
-        
-            this.setupImports(monitor);
         }
         catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException | LockException e)
         {
@@ -358,16 +336,18 @@ public abstract class NXProgramBuilder
         int undefEntrySize = 1; // We create fake 1 byte functions for imports
         long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
         
+        // Create the block where imports will be located
         this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
         
         // Handle imported symbols
-        for (ElfSymbol elfSymbol : this.nxo.getSymbolTable().getSymbols()) 
+        for (ElfSymbol elfSymbol : this.nxo.getSymbolTable().getSymbols())
         {
             String symName = elfSymbol.getNameAsString();
             
             if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
             {
                 Address address = this.aSpace.getAddress(externalBlockAddrOffset);
+                elfSymbol.setValue(externalBlockAddrOffset); // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
                 this.evaluateElfSymbol(elfSymbol, address, true);
                 externalBlockAddrOffset += undefEntrySize;
             }

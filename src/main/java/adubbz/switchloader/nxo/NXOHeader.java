@@ -199,7 +199,8 @@ public class NXOHeader
         
             ElfSymbol sym;
             if (r_sym != 0) {
-                // Note: getSymbolAt doesn't work as it relies on getValue() being the address, which doesn't appear to be the case for imports
+                // Note: getSymbolAt doesn't work as it relies on getValue() being the address, which is 0 for imports.
+                // We manually correct the value later to point to the fake external block.
                 sym = symtab.getSymbols()[(int)r_sym];
             } else {
                 sym = null;
