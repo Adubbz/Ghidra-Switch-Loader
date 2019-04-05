@@ -199,7 +199,8 @@ public class NXOHeader
         
             ElfSymbol sym;
             if (r_sym != 0) {
-                sym = symtab.getSymbolAt(r_sym);
+                // Note: getSymbolAt doesn't work as it relies on getValue() being the address, which doesn't appear to be the case for imports
+                sym = symtab.getSymbols()[(int)r_sym];
             } else {
                 sym = null;
             }
