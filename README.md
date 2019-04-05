@@ -13,5 +13,6 @@ A loader for Ghidra supporting a variety of Nintendo Switch file formats.
 - You'll find the output zip file inside `/dist`
 
 ## Installation
-- Copy the zip file to ``<Ghidra install directory>/Extensions/Ghidra``.
-- Start Ghidra and use the "Install Extensions" dialog to finish the installation. (``File -> Install Extensions...``).
+- Start Ghidra and use the "Install Extensions" dialog (``File -> Install Extensions...``).
+- Press the ``+`` button in the upper right corner.
+- Select the zip file in the file browser, then restart Ghidra.
