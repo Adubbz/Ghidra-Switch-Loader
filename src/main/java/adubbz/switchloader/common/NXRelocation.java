@@ -10,15 +10,17 @@ import ghidra.app.util.bin.format.elf.ElfSymbol;
 
 public class NXRelocation 
 {
-    public NXRelocation(long offset, long r_type, ElfSymbol sym, long addend) 
+    public NXRelocation(long offset, long r_sym, long r_type, ElfSymbol sym, long addend) 
     {
         this.offset = offset;
+        this.r_sym = r_sym;
         this.r_type = r_type;
         this.sym = sym;
         this.addend = addend;
     }
     
     public long offset;
+    public long r_sym;
     public long r_type;
     public ElfSymbol sym;
     public long addend;

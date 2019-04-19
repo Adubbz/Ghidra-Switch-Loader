@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.Longs;
 
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
@@ -276,6 +277,7 @@ public abstract class NXProgramBuilder
         for (NXRelocation reloc : this.nxo.getRelocations()) 
         {
             Address target = this.aSpace.getAddress(reloc.offset + this.nxo.getBaseAddress());
+            long originalValue = this.program.getMemory().getLong(target);
             
             if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_GLOB_DAT ||
                 reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_JUMP_SLOT ||
@@ -302,6 +304,21 @@ public abstract class NXProgramBuilder
             else 
             {
                 Msg.info(this, String.format("TODO: r_type 0x%x", reloc.r_type));
+            }
+            
+            long newValue = this.program.getMemory().getLong(target);
+            
+            // Store relocations for Ghidra's relocation table view
+            if (newValue != originalValue)
+            {
+                String symbolName = null;
+                
+                if (reloc.sym != null) 
+                {
+                    symbolName = reloc.sym.getNameAsString();
+                }
+                
+                program.getRelocationTable().add(target, (int)reloc.r_type, new long[] { reloc.r_sym }, Longs.toByteArray(originalValue), symbolName);
             }
         }
         

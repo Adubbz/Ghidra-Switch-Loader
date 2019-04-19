@@ -210,7 +210,7 @@ public class NXOHeader
             {
                 locations.add(offset);
             }
-            relocs.add(new NXRelocation(offset, r_type, sym, addend));
+            relocs.add(new NXRelocation(offset, r_sym, r_type, sym, addend));
         }
         return locations;
     }
