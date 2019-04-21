@@ -57,37 +57,29 @@ public class IPCAnalyzer
     protected List<Address> locateIpcVtables() throws MemoryAccessException, AddressOutOfBoundsException, IOException
     {
         List<Address> out = new ArrayList<>();
+        
         NXOAdapter adapter = this.nxo.getAdapter();
         NXOSection rodata = adapter.getSection(NXOSectionType.RODATA);
         NXOSection data = adapter.getSection(NXOSectionType.DATA);
+        Memory mem = this.program.getMemory();
         SymbolTable symbolTable = this.program.getSymbolTable();
         
         Map<String, Long> knownVTabOffsets = new HashMap<>();
         
         // Locate some initial vtables based on RTTI
-        for (NXRelocation reloc : this.nxo.getRelocations()) 
+        for (Address vtAddr : this.getGotDataSyms().values()) 
         {
             try
             {
-                long off;
+                long vtOff = vtAddr.getOffset() - this.nxo.getBaseAddress();
                 
-                if (reloc.sym != null && reloc.sym.getSectionHeaderIndex() != ElfSectionHeaderConstants.SHN_UNDEF && reloc.sym.getValue() == 0)
+                if (vtOff >= data.getOffset() && vtOff < (data.getOffset() + data.getSize()))
                 {
-                    off = reloc.sym.getValue();
-                }
-                else if (reloc.addend != 0)
-                {
-                    off = reloc.addend;
-                }
-                else continue;
-                
-                if (off >= data.getOffset() && off < (data.getOffset() + data.getSize()))
-                {
-                    long rttiOffset = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + off + 8)) - this.nxo.getBaseAddress();
+                    long rttiOffset = mem.getLong(vtAddr.add(8)) - this.nxo.getBaseAddress();
                     
                     if (rttiOffset >= data.getOffset() && rttiOffset < (data.getOffset() + data.getSize()))
                     {
-                        long thisOffset = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + rttiOffset + 8)) - this.nxo.getBaseAddress();
+                        long thisOffset = mem.getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + rttiOffset + 8)) - this.nxo.getBaseAddress();
                         
                         if (thisOffset >= rodata.getOffset() && thisOffset < (rodata.getOffset() + rodata.getSize()))
                         {
@@ -98,14 +90,14 @@ public class IPCAnalyzer
                             
                             if (symbol.contains("UnmanagedServiceObject") || symbol.equals("N2nn2sf4cmif6server23CmifServerDomainManager6DomainE"))
                             {
-                                knownVTabOffsets.put(symbol, off);
+                                knownVTabOffsets.put(symbol, vtOff);
                                 Msg.info(this, String.format("Service sym %s at 0x%X", symbol, this.nxo.getBaseAddress() + thisOffset));
                             }
                         }
                     }
                 }
             }
-            catch (MemoryAccessException e)
+            catch (MemoryAccessException e) // Skip entries with out of bounds offsets
             {
                 continue;
             }
@@ -121,7 +113,7 @@ public class IPCAnalyzer
         
         for (long off : knownVTabOffsets.values())
         {
-            long curKnownAddr = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + off + 0x20));
+            long curKnownAddr = mem.getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + off + 0x20));
             
             if (knownAddress == 0)
             {
@@ -133,32 +125,21 @@ public class IPCAnalyzer
         Msg.info(this, String.format("Known service address: 0x%x", knownAddress));
         
         // Use the known function to find all IPC vtables
-        for (NXRelocation reloc : this.nxo.getRelocations()) 
+        for (Address vtAddr : this.getGotDataSyms().values()) 
         {
             try
             {
-                long vtOff;
-                
-                if (reloc.sym != null && reloc.sym.getSectionHeaderIndex() != ElfSectionHeaderConstants.SHN_UNDEF && reloc.sym.getValue() == 0)
-                {
-                    vtOff = reloc.sym.getValue();
-                }
-                else if (reloc.addend != 0)
-                {
-                    vtOff = reloc.addend;
-                }
-                else continue;
-                
+                long vtOff = vtAddr.getOffset() - this.nxo.getBaseAddress();
+                    
                 if (vtOff >= data.getOffset() && vtOff < (data.getOffset() + data.getSize()))
                 {
-                    if (knownAddress == this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + vtOff + 0x20)))
+                    if (knownAddress == mem.getLong(vtAddr.add(0x20)))
                     {
-                        Address vtAddr = this.aSpace.getAddress(this.nxo.getBaseAddress() + vtOff);
                         out.add(vtAddr);
                     }
                 }
             }
-            catch (MemoryAccessException e)
+            catch (MemoryAccessException e) // Skip entries with out of bounds offsets
             {
                 continue;
             }
@@ -167,7 +148,7 @@ public class IPCAnalyzer
         return out;
     }
     
-    protected void createVTableEntries(List<Address> vtAddrs) throws MemoryAccessException, AddressOutOfBoundsException, IOException, DemangledException
+    protected void createVTableEntries(List<Address> vtAddrs) throws MemoryAccessException, AddressOutOfBoundsException, IOException
     {
         Memory mem = this.program.getMemory();
         NXOAdapter adapter = this.nxo.getAdapter();
@@ -180,7 +161,7 @@ public class IPCAnalyzer
             long rttiBase = mem.getLong(this.aSpace.getAddress(vtOff + 0x8)) - this.nxo.getBaseAddress();
             String name = String.format("SRV_VTAB_%X", vtOff);
             
-            // VTable has no RTTI information
+            // Attempt to find the name if the vtable has RTTI
             if (rttiBase != 0)
             {
                 // RTTI must be within the data block
@@ -199,9 +180,42 @@ public class IPCAnalyzer
                     }
                 }
             }
-       
+
             this.vtEntries.add(new VTableEntry(name, vtAddr));
         }
+    }
+    
+    private Map<Address, Address> gotDataSyms = null;
+    
+    /**
+     * A map of relocated entries in the global offset table to their new values.
+     */
+    protected Map<Address, Address> getGotDataSyms()
+    {
+        if (gotDataSyms != null)
+            return this.gotDataSyms;
+        
+        gotDataSyms = new HashMap<Address, Address>();
+        
+        for (NXRelocation reloc : this.nxo.getRelocations()) 
+        {
+            long off;
+            
+            if (reloc.sym != null && reloc.sym.getSectionHeaderIndex() != ElfSectionHeaderConstants.SHN_UNDEF && reloc.sym.getValue() == 0)
+            {
+                off = reloc.sym.getValue();
+            }
+            else if (reloc.addend != 0)
+            {
+                off = reloc.addend;
+            }
+            else continue;
+            
+            // Target -> Value
+           this.gotDataSyms.put(this.aSpace.getAddress(this.nxo.getBaseAddress() + reloc.offset), this.aSpace.getAddress(this.nxo.getBaseAddress() + off));
+        }
+        
+        return gotDataSyms;
     }
     
     public List<VTableEntry> getVTableEntries()

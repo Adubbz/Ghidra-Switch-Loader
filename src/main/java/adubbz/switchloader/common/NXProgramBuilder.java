@@ -140,8 +140,11 @@ public abstract class NXProgramBuilder
             
             for (VTableEntry entry : ipcAnalyzer.getVTableEntries())
             {
-                this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
-                Msg.info(this, String.format("Created IPC symbol %s at %X", entry.name, entry.addr.getOffset()));
+                if (!this.program.getSymbolTable().hasSymbol(entry.addr))
+                {
+                    this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
+                    Msg.info(this, String.format("Created IPC symbol %s at %X", entry.name, entry.addr.getOffset()));
+                }
             }
         }
         catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException | LockException e)
