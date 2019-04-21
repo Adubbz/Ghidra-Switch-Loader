@@ -139,13 +139,6 @@ public abstract class NXProgramBuilder
             
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
-        
-            // Set all data in the GOT to the pointer data type
-            for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
-            {
-                Msg.info(this, String.format("Creating pointer at 0x%X", addr.getOffset()));
-                this.createPointer(addr);
-            }
             
             // Analyze and label any IPC info found
             IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
@@ -157,6 +150,12 @@ public abstract class NXProgramBuilder
                     this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
                     Msg.info(this, String.format("Created IPC symbol %s at %X", entry.name, entry.addr.getOffset()));
                 }
+            }
+            
+            // Set all data in the GOT to the pointer data type
+            for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
+            {
+                this.createPointer(addr);
             }
         }
         catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException | LockException e)
