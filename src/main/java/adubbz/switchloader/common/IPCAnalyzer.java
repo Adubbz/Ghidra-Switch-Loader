@@ -9,6 +9,7 @@ package adubbz.switchloader.common;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -152,6 +153,7 @@ public class IPCAnalyzer
     {
         Memory mem = this.program.getMemory();
         NXOAdapter adapter = this.nxo.getAdapter();
+        NXOSection text = adapter.getSection(NXOSectionType.TEXT);
         NXOSection data = adapter.getSection(NXOSectionType.DATA);
         NXOSection rodata = adapter.getSection(NXOSectionType.RODATA);
         
@@ -159,7 +161,7 @@ public class IPCAnalyzer
         {
             long vtOff = vtAddr.getOffset();
             long rttiBase = mem.getLong(this.aSpace.getAddress(vtOff + 0x8)) - this.nxo.getBaseAddress();
-            String name = String.format("SRV_VTAB_%X", vtOff);
+            String name = String.format("SRV_%X::vtable", vtOff);
             
             // Attempt to find the name if the vtable has RTTI
             if (rttiBase != 0)
@@ -167,7 +169,7 @@ public class IPCAnalyzer
                 // RTTI must be within the data block
                 if (rttiBase >= data.getOffset() && rttiBase < (data.getOffset() + data.getSize()))
                 {
-                    long thisOff = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + rttiBase + 8)) - this.nxo.getBaseAddress();
+                    long thisOff = mem.getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + rttiBase + 8)) - this.nxo.getBaseAddress();
                     
                     if (thisOff >= rodata.getOffset() && thisOff < (rodata.getOffset() + rodata.getSize()))
                     {
@@ -175,13 +177,44 @@ public class IPCAnalyzer
                         
                         if (!symbol.isEmpty() && symbol.length() <= 512)
                         {
+                            if (!symbol.startsWith("_Z"))
+                                symbol = "_ZTV" + symbol;
+                            
                             name = demangleIpcSymbol(symbol);
                         }
                     }
                 }
             }
-
-            this.vtEntries.add(new VTableEntry(name, vtAddr));
+            
+            List<Address> implAddrs = new ArrayList<>();
+            long funcVtOff = 0x30;
+            long funcOff = 0;
+            
+            // Find all ipc impl functions in the vtable
+            while ((funcOff = mem.getLong(vtAddr.add(funcVtOff))) != 0)
+            {
+                long funcRelOff = funcOff - this.nxo.getBaseAddress();
+                
+                if (funcRelOff >= text.getOffset() && funcRelOff < (text.getOffset() + text.getSize()))
+                {
+                    implAddrs.add(this.aSpace.getAddress(funcOff));
+                    funcVtOff += 0x8;
+                }
+                else break;
+            
+                if (this.getGotDataSyms().values().contains(vtAddr.add(funcVtOff)))
+                {
+                    break;
+                }
+            }
+            
+            // There must be either 1 unique function without repeats, or more than one unique function with repeats allowed
+            if (new HashSet<Address>(implAddrs).size() <= 1 && implAddrs.size() != 1)
+            {
+                implAddrs.clear();
+            }
+            
+            this.vtEntries.add(new VTableEntry(name, vtAddr, implAddrs));
         }
     }
     
@@ -259,6 +292,22 @@ public class IPCAnalyzer
             out = builder.toString();
         }
         
+        String suffix = out.substring(out.lastIndexOf(':') + 1);
+        
+        if (out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatelessAllocator<"))
+        {
+            String abvNamePrefix = "_tO2N<";
+            int abvNamePrefixIndex = out.indexOf(abvNamePrefix);
+            
+            if (abvNamePrefixIndex != -1)
+            {
+                int abvNameStart = abvNamePrefixIndex + abvNamePrefix.length();
+                out = out.substring(abvNameStart, out.indexOf('>', abvNameStart));
+                out += "::" + suffix;
+            }
+        }
+            
+        
         return out;
     }
     
@@ -266,11 +315,13 @@ public class IPCAnalyzer
     {
         public final String name;
         public final Address addr;
+        public final List<Address> funcs;
         
-        private VTableEntry(String name, Address addr)
+        private VTableEntry(String name, Address addr, List<Address> funcs)
         {
             this.name = name;
             this.addr = addr;
+            this.funcs = funcs;
         }
     }
 }

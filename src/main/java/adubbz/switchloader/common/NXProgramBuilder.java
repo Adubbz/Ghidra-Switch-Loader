@@ -43,6 +43,7 @@ import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
+import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
@@ -140,17 +141,7 @@ public abstract class NXProgramBuilder
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
             
-            // Analyze and label any IPC info found
-            IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
-            
-            for (VTableEntry entry : ipcAnalyzer.getVTableEntries())
-            {
-                if (!this.program.getSymbolTable().hasSymbol(entry.addr))
-                {
-                    this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
-                    Msg.info(this, String.format("Created IPC symbol %s at %X", entry.name, entry.addr.getOffset()));
-                }
-            }
+            this.markupIpcVTables();
             
             // Set all data in the GOT to the pointer data type
             for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
@@ -395,6 +386,70 @@ public abstract class NXProgramBuilder
                 elfSymbol.setValue(externalBlockAddrOffset); // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
                 this.evaluateElfSymbol(elfSymbol, address, true);
                 externalBlockAddrOffset += undefEntrySize;
+            }
+        }
+    }
+    
+    protected void markupIpcVTables() throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
+    {
+        // Analyze and label any IPC info found
+        IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
+        
+        for (VTableEntry entry : ipcAnalyzer.getVTableEntries())
+        {
+            String entryNameNoSuffix = entry.name.replace("::vtable", "");
+            
+            if (!this.program.getSymbolTable().hasSymbol(entry.addr))
+            {
+                this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
+            }
+            
+            // Label the four functions that exist for all ipc vtables
+            for (int i = 0; i < 4; i++)
+            {
+                Address vtAddr = entry.addr.add(0x10 + i * 0x8);
+                String name = "";
+                
+                // Set vtable func data types to pointers
+                this.createPointer(vtAddr);
+                
+                switch (i)
+                {
+                    case 0:
+                        name = "AddReference";
+                        break;
+                        
+                    case 1:
+                        name = "Release";
+                        break;
+                        
+                    case 2:
+                        name = "GetProxyInfo";
+                        break;
+                        
+                    case 3: // Shared by everything
+                        name = "nn::sf::IServiceObject::GetInterfaceTypeInfo";
+                        break;
+                }
+                         
+                if (i == 3) // For now, only label GetInterfaceTypeInfo. We need better heuristics for the others as they may be shared.
+                {
+                    Address funcAddr = this.aSpace.getAddress(this.program.getMemory().getLong(vtAddr));
+                    this.program.getSymbolTable().createLabel(funcAddr, name, null, SourceType.IMPORTED);
+                }
+                else
+                {
+                    this.program.getListing().setComment(vtAddr, CodeUnit.REPEATABLE_COMMENT, name);
+                }
+            }
+            
+            for (int i = 0; i < entry.funcs.size(); i++)
+            {
+                Address func = entry.funcs.get(i);
+                String name = null;
+
+                // Set vtable func data types to pointers
+                this.createPointer(entry.addr.add(0x30 + i * 0x8));
             }
         }
     }
