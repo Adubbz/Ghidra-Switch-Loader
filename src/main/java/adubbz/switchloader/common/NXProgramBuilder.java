@@ -16,6 +16,7 @@ import java.util.Map;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 
+import adubbz.switchloader.common.IPCAnalyzer.VTableEntry;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
@@ -134,7 +135,14 @@ public abstract class NXProgramBuilder
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
         
-            this.locateIpcVtables();
+            // Analyze and label any IPC info found
+            IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
+            
+            for (VTableEntry entry : ipcAnalyzer.getVTableEntries())
+            {
+                this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
+                Msg.info(this, String.format("Created IPC symbol %s at %X", entry.name, entry.addr.getOffset()));
+            }
         }
         catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException | LockException e)
         {
@@ -332,121 +340,6 @@ public abstract class NXProgramBuilder
                 String name = gotNameLookup.get(entry.target);
                 // TODO: Mark as func
                 this.createSymbol(this.aSpace.getAddress(addr), name, false, false, null);
-            }
-        }
-    }
-    
-    protected void locateIpcVtables() throws IOException, MemoryAccessException, AddressOutOfBoundsException, InvalidInputException
-    {
-        // Attempt to locate ipc vtables
-        NXOAdapter adapter = this.nxo.getAdapter();
-        NXOSection rodata = adapter.getSection(NXOSectionType.RODATA);
-        NXOSection data = adapter.getSection(NXOSectionType.DATA);
-        SymbolTable symbolTable = this.program.getSymbolTable();
-        
-        Map<String, Long> vTableOffsets = new HashMap<>();
-        
-        // Locate some initial vtables based on RTTI
-        for (NXRelocation reloc : this.nxo.getRelocations()) 
-        {
-            try
-            {
-                long off;
-                
-                if (reloc.sym != null && reloc.sym.getSectionHeaderIndex() != ElfSectionHeaderConstants.SHN_UNDEF && reloc.sym.getValue() == 0)
-                {
-                    off = reloc.sym.getValue();
-                }
-                else if (reloc.addend != 0)
-                {
-                    off = reloc.addend;
-                }
-                else continue;
-                
-                if (off >= data.getOffset() && off < (data.getOffset() + data.getSize()))
-                {
-                    long rttiOffset = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + off + 8)) - this.nxo.getBaseAddress();
-                    
-                    if (rttiOffset >= data.getOffset() && rttiOffset < (data.getOffset() + data.getSize()))
-                    {
-                        long thisOffset = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + rttiOffset + 8)) - this.nxo.getBaseAddress();
-                        
-                        if (thisOffset >= rodata.getOffset() && thisOffset < (rodata.getOffset() + rodata.getSize()))
-                        {
-                            String symbol = adapter.getMemoryReader().readTerminatedString(thisOffset, '\0');
-                            
-                            if (symbol.isEmpty() || symbol.length() > 512)
-                                continue;
-                            
-                            if (symbol.contains("UnmanagedServiceObject") || symbol.equals("N2nn2sf4cmif6server23CmifServerDomainManager6DomainE"))
-                            {
-                                vTableOffsets.put(symbol, off);
-                                Msg.info(this, String.format("Service sym %s at 0x%X", symbol, this.nxo.getBaseAddress() + thisOffset));
-                            }
-                        }
-                    }
-                }
-            }
-            catch (MemoryAccessException e)
-            {
-                continue;
-            }
-        }
-        
-        if (vTableOffsets.isEmpty())
-            return;
-        
-        // All IServiceObjects share a common non-overridable virtual function at vt + 0x20
-        // and thus that value can be used to distinguish a virtual table vs a non-virtual table.
-        // Here we locate the address of that function.
-        long knownAddress = 0;
-        
-        for (long off : vTableOffsets.values())
-        {
-            long curKnownAddr = this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + off + 0x20));
-            
-            if (knownAddress == 0)
-            {
-                knownAddress = curKnownAddr; 
-            }
-            else if (knownAddress != curKnownAddr) return;
-        }
-        
-        Msg.info(this, String.format("Known service address: 0x%x", knownAddress));
-        
-        // Use the known function to find all IPC vtables
-        for (NXRelocation reloc : this.nxo.getRelocations()) 
-        {
-            try
-            {
-                long vtOff;
-                
-                if (reloc.sym != null && reloc.sym.getSectionHeaderIndex() != ElfSectionHeaderConstants.SHN_UNDEF && reloc.sym.getValue() == 0)
-                {
-                    vtOff = reloc.sym.getValue();
-                }
-                else if (reloc.addend != 0)
-                {
-                    vtOff = reloc.addend;
-                }
-                else continue;
-                
-                if (vtOff >= data.getOffset() && vtOff < (data.getOffset() + data.getSize()))
-                {
-                    if (knownAddress == this.program.getMemory().getLong(this.aSpace.getAddress(this.nxo.getBaseAddress() + vtOff + 0x20)))
-                    {
-                        Address vtAddr = this.aSpace.getAddress(this.nxo.getBaseAddress() + vtOff);
-                        
-                        if (!symbolTable.hasSymbol(vtAddr))
-                        {
-                            this.program.getSymbolTable().createLabel(vtAddr, String.format("SRV_VTAB_%X", vtAddr.getOffset()), null, SourceType.IMPORTED);
-                        }
-                    }
-                }
-            }
-            catch (MemoryAccessException e)
-            {
-                continue;
             }
         }
     }
