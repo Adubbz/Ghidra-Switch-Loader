@@ -36,9 +36,12 @@ import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
+import ghidra.program.model.address.AddressRange;
+import ghidra.program.model.address.AddressRangeImpl;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataTypeConflictException;
+import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
@@ -71,6 +74,8 @@ public abstract class NXProgramBuilder
     protected MemoryBlockHelper memBlockHelper;
     
     protected List<PltEntry> pltEntries = new ArrayList<>();
+    protected AddressRange gotRange;
+    
     protected int undefSymbolCount;
     
     protected NXProgramBuilder(Program program, ByteProvider provider, NXOAdapter adapter, MemoryConflictHandler handler)
@@ -135,6 +140,13 @@ public abstract class NXProgramBuilder
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
         
+            // Set all data in the GOT to the pointer data type
+            for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
+            {
+                Msg.info(this, String.format("Creating pointer at 0x%X", addr.getOffset()));
+                this.createPointer(addr);
+            }
+            
             // Analyze and label any IPC info found
             IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
             
@@ -191,7 +203,7 @@ public abstract class NXProgramBuilder
         }
     }
     
-    protected void setupRelocations() throws AddressOverflowException, AddressOutOfBoundsException, IOException, NotFoundException
+    protected void setupRelocations() throws AddressOverflowException, AddressOutOfBoundsException, IOException, NotFoundException, CodeUnitInsertionException, DataTypeConflictException
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
@@ -279,7 +291,11 @@ public abstract class NXProgramBuilder
         }
         
         if (good)
-            this.memBlockHelper.addSection(".got", pltGotEnd, memoryProvider.getInputStream(pltGotEnd), gotEnd - pltGotEnd, true, false, false);
+        {
+            long gotSize = gotEnd - pltGotEnd;
+            this.gotRange = new AddressRangeImpl(this.aSpace.getAddress(this.nxo.getBaseAddress() + pltGotEnd), this.aSpace.getAddress(this.nxo.getBaseAddress() + gotEnd));
+            this.memBlockHelper.addSection(".got", pltGotEnd, memoryProvider.getInputStream(pltGotEnd), gotSize, true, false, false);
+        }
     }
     
     protected void performRelocations() throws MemoryAccessException, InvalidInputException, AddressOutOfBoundsException
@@ -461,6 +477,18 @@ public abstract class NXProgramBuilder
         if (d == null || !TerminatedStringDataType.dataType.isEquivalent(d.getDataType())) 
         {
             d = this.program.getListing().createData(address, TerminatedStringDataType.dataType, -1);
+        }
+        
+        return d.getLength();
+    }
+    
+    protected int createPointer(Address address) throws CodeUnitInsertionException, DataTypeConflictException
+    {
+        Data d = this.program.getListing().getDataAt(address);
+        
+        if (d == null || !PointerDataType.dataType.isEquivalent(d.getDataType())) 
+        {
+            d = this.program.getListing().createData(address, PointerDataType.dataType, 8);
         }
         
         return d.getLength();
