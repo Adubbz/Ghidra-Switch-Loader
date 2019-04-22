@@ -23,6 +23,11 @@ public class MOD0Header
     private int ehFrameHdrEndOffset;
     private int runtimeModuleOffset;
     
+    // libnx extensions
+    private String lnxMagic;
+    private int lnxGotStart;
+    private int lnxGotEnd;
+    
     public MOD0Header(BinaryReader reader, int readerOffset, int mod0StartOffset) throws InvalidMagicException, IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
@@ -47,6 +52,15 @@ public class MOD0Header
         this.ehFrameHdrStartOffset = mod0StartOffset + reader.readNextInt();
         this.ehFrameHdrEndOffset = mod0StartOffset + reader.readNextInt();
         this.runtimeModuleOffset = mod0StartOffset + reader.readNextInt();
+        
+        this.lnxMagic = reader.readNextAsciiString(4);
+        
+        if (this.lnxMagic.equals("LNY0"))
+        {
+            Msg.info(this, "Detected Libnx MOD0 extension");
+            this.lnxGotStart = mod0StartOffset + reader.readNextInt();
+            this.lnxGotEnd = mod0StartOffset + reader.readNextInt();
+        }
     }
     
     public int getDynamicOffset() 
@@ -82,5 +96,21 @@ public class MOD0Header
     public int getRuntimeModuleOffset()
     {
         return this.runtimeModuleOffset;
+    }
+    
+    // libnx extensions
+    public boolean hasLibnxExtension()
+    {
+        return this.lnxMagic.equals("LNY0");
+    }
+    
+    public int getLibnxGotStart()
+    {
+        return this.lnxGotStart;
+    }
+    
+    public int getLibnxGotEnd()
+    {
+        return this.lnxGotEnd;
     }
 }

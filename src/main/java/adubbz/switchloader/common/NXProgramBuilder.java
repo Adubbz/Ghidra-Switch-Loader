@@ -134,6 +134,7 @@ public abstract class NXProgramBuilder
             this.setupStringTable();
             this.setupSymbolTable();
             this.setupRelocations();
+            this.createGlobalOffsetTable();
             this.memBlockHelper.finalizeSections();
             this.setupImports(monitor);
             this.performRelocations();
@@ -257,8 +258,11 @@ public abstract class NXProgramBuilder
         long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
         this.memBlockHelper.addSection(".plt", pltStart, memoryProvider.getInputStream(pltStart), pltEnd - pltStart, true, false, false);
         
+        long gotStart = 0;
+        long gotEnd = 0;
+        
         boolean good = false;
-        long gotEnd = pltGotEnd + 8;
+        gotEnd = pltGotEnd + 8;
         
         while (!this.nxo.getDynamicTable().containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY) || gotEnd < this.nxo.getDynamicTable().getDynamicValue(ElfDynamicType.DT_INIT_ARRAY))
         {
@@ -282,9 +286,27 @@ public abstract class NXProgramBuilder
         
         if (good)
         {
-            long gotSize = gotEnd - pltGotEnd;
-            this.gotRange = new AddressRangeImpl(this.aSpace.getAddress(this.nxo.getBaseAddress() + pltGotEnd), this.aSpace.getAddress(this.nxo.getBaseAddress() + gotEnd));
-            this.memBlockHelper.addSection(".got", pltGotEnd, memoryProvider.getInputStream(pltGotEnd), gotSize, true, false, false);
+            gotStart = pltGotEnd;
+            this.gotRange = new AddressRangeImpl(this.aSpace.getAddress(this.nxo.getBaseAddress() + gotStart), this.aSpace.getAddress(this.nxo.getBaseAddress() + gotEnd));
+        }
+    }
+    
+    protected void createGlobalOffsetTable() throws AddressOverflowException, AddressOutOfBoundsException, IOException
+    {
+        NXOAdapter adapter = this.nxo.getAdapter();
+        ByteProvider memoryProvider = adapter.getMemoryProvider();
+        
+        if (adapter.getMOD0().hasLibnxExtension())
+        {
+            this.gotRange = new AddressRangeImpl(this.aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getLibnxGotStart()), this.aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getLibnxGotEnd()));
+        }
+        
+        if (this.gotRange != null)
+        {
+            long gotStartOff = this.gotRange.getMinAddress().getOffset() - this.nxo.getBaseAddress();
+            long gotEndOff = this.gotRange.getMaxAddress().getOffset() - this.nxo.getBaseAddress();
+            long gotSize = gotEndOff - gotStartOff;
+            this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
         }
     }
     
