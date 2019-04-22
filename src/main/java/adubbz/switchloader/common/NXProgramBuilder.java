@@ -16,7 +16,7 @@ import java.util.Map;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 
-import adubbz.switchloader.common.IPCAnalyzer.VTableEntry;
+import adubbz.switchloader.common.IPCAnalyzer.IPCVTableEntry;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
@@ -395,10 +395,11 @@ public abstract class NXProgramBuilder
         // Analyze and label any IPC info found
         IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
         
-        for (VTableEntry entry : ipcAnalyzer.getVTableEntries())
+        for (IPCVTableEntry entry : ipcAnalyzer.getVTableEntries())
         {
             String entryNameNoSuffix = entry.name.replace("::vtable", "");
             
+            // Set the vtable name
             if (!this.program.getSymbolTable().hasSymbol(entry.addr))
             {
                 this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
@@ -435,7 +436,9 @@ public abstract class NXProgramBuilder
                 if (i == 3) // For now, only label GetInterfaceTypeInfo. We need better heuristics for the others as they may be shared.
                 {
                     Address funcAddr = this.aSpace.getAddress(this.program.getMemory().getLong(vtAddr));
-                    this.program.getSymbolTable().createLabel(funcAddr, name, null, SourceType.IMPORTED);
+                    
+                    if (!this.program.getSymbolTable().hasSymbol(funcAddr))
+                        this.program.getSymbolTable().createLabel(funcAddr, name, null, SourceType.IMPORTED);
                 }
                 else
                 {
@@ -443,14 +446,22 @@ public abstract class NXProgramBuilder
                 }
             }
             
-            for (int i = 0; i < entry.funcs.size(); i++)
+            for (int i = 0; i < entry.ipcFuncs.size(); i++)
             {
-                Address func = entry.funcs.get(i);
+                Address func = entry.ipcFuncs.get(i);
                 String name = null;
 
                 // Set vtable func data types to pointers
                 this.createPointer(entry.addr.add(0x30 + i * 0x8));
             }
+        }
+        
+        for (Address addr : ipcAnalyzer.getSTableAddresses())
+        {
+            this.createPointer(addr);
+            
+            if (!this.program.getSymbolTable().hasSymbol(addr))
+                this.program.getSymbolTable().createLabel(addr, String.format("SRV_S_TAB_%X", addr.getOffset()), null, SourceType.IMPORTED);
         }
     }
     

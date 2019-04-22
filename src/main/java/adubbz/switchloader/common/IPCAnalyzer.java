@@ -12,11 +12,15 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
 import adubbz.switchloader.nxo.NXOSectionType;
+import adubbz.switchloader.util.ByteUtil;
+import generic.stl.Pair;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.demangler.DemangledException;
 import ghidra.app.util.demangler.DemangledObject;
@@ -36,7 +40,10 @@ public class IPCAnalyzer
     protected AddressSpace aSpace;
     protected NXOHeader nxo;
     
-    protected List<VTableEntry> vtEntries = new ArrayList<>();
+    protected List<Address> vtAddrs = new ArrayList<>();
+    protected List<Address> stAddrs = new ArrayList<>();
+    
+    protected List<IPCVTableEntry> vtEntries = new ArrayList<>();
     
     public IPCAnalyzer(Program program, AddressSpace aSpace, NXOHeader nxo)
     {
@@ -46,8 +53,9 @@ public class IPCAnalyzer
         
         try
         {
-            List<Address> vtAddrs = this.locateIpcVtables();
+            this.locateIpcVtables();
             this.createVTableEntries(vtAddrs);
+            this.locateSTables();
         }
         catch (Exception e)
         {
@@ -55,10 +63,8 @@ public class IPCAnalyzer
         }
     }
     
-    protected List<Address> locateIpcVtables() throws MemoryAccessException, AddressOutOfBoundsException, IOException
+    protected void locateIpcVtables() throws MemoryAccessException, AddressOutOfBoundsException, IOException
     {
-        List<Address> out = new ArrayList<>();
-        
         NXOAdapter adapter = this.nxo.getAdapter();
         NXOSection rodata = adapter.getSection(NXOSectionType.RODATA);
         NXOSection data = adapter.getSection(NXOSectionType.DATA);
@@ -105,7 +111,7 @@ public class IPCAnalyzer
         }
         
         if (knownVTabOffsets.isEmpty())
-            return out;
+            return;
         
         // All IServiceObjects share a common non-overridable virtual function at vt + 0x20
         // and thus that value can be used to distinguish a virtual table vs a non-virtual table.
@@ -120,7 +126,7 @@ public class IPCAnalyzer
             {
                 knownAddress = curKnownAddr; 
             }
-            else if (knownAddress != curKnownAddr) return out;
+            else if (knownAddress != curKnownAddr) return;
         }
         
         Msg.info(this, String.format("Known service address: 0x%x", knownAddress));
@@ -136,7 +142,7 @@ public class IPCAnalyzer
                 {
                     if (knownAddress == mem.getLong(vtAddr.add(0x20)))
                     {
-                        out.add(vtAddr);
+                        this.vtAddrs.add(vtAddr);
                     }
                 }
             }
@@ -145,8 +151,6 @@ public class IPCAnalyzer
                 continue;
             }
         }
-        
-        return out;
     }
     
     protected void createVTableEntries(List<Address> vtAddrs) throws MemoryAccessException, AddressOutOfBoundsException, IOException
@@ -214,7 +218,70 @@ public class IPCAnalyzer
                 implAddrs.clear();
             }
             
-            this.vtEntries.add(new VTableEntry(name, vtAddr, implAddrs));
+            this.vtEntries.add(new IPCVTableEntry(name, vtAddr, implAddrs));
+        }
+    }
+    
+    protected void locateSTables() throws IOException
+    {
+        List<Pair<Long, Long>> candidates = new ArrayList<>();
+        
+        for (NXRelocation reloc : this.nxo.getRelocations()) 
+        {
+            if (reloc.addend > 0)
+                candidates.add(new Pair(reloc.addend, reloc.offset));
+        }
+        
+        candidates.sort((a, b) -> a.first.compareTo(b.first));
+        
+        NXOAdapter adapter = this.nxo.getAdapter();
+        NXOSection text = adapter.getSection(NXOSectionType.TEXT);
+        
+        // 5.x: match on the "SFCI" constant used in the template of s_Table
+        //   MOV  W?, #0x4653
+        //   MOVK W?, #0x4943, LSL#16
+        long movMask  = 0x5288CAL;
+        long movkMask = 0x72A928L;
+        
+        for (long off = text.getOffset(); off < (text.getOffset() + text.getSize()); off += 0x4)
+        {
+            long val1 = (this.nxo.getAdapter().getMemoryReader().readUnsignedInt(off) & 0xFFFFFF00L) >> 8;
+            long val2 = (this.nxo.getAdapter().getMemoryReader().readUnsignedInt(off + 0x4) & 0xFFFFFF00L) >> 8;
+            
+            // Match on a sequence of MOV, MOVK
+            if (val1 == movMask && val2 == movkMask)
+            {
+                long processFuncOffset = 0;
+                long sTableOffset = 0;
+                
+                // Find the candidate after our offset, then pick the one before that
+                for (Pair<Long, Long> candidate : candidates)
+                {
+                    if (candidate.first > off)
+                        break;
+                    
+                    processFuncOffset = candidate.first;
+                    sTableOffset = candidate.second;
+                }
+                
+                long pRetOff;
+                
+                // Make sure our SFCI offset is within the process function by matching on the
+                // RET instruction
+                for (pRetOff = processFuncOffset; pRetOff < (text.getOffset() + text.getSize()); pRetOff += 0x4)
+                {
+                    long rval = this.nxo.getAdapter().getMemoryReader().readUnsignedInt(pRetOff);
+                    
+                    // RET
+                    if (rval == 0xD65F03C0L)
+                        break;
+                }
+                
+                if (pRetOff > off)
+                {
+                    this.stAddrs.add(this.aSpace.getAddress(this.nxo.getBaseAddress() + sTableOffset));
+                }
+            }
         }
     }
     
@@ -251,9 +318,14 @@ public class IPCAnalyzer
         return gotDataSyms;
     }
     
-    public List<VTableEntry> getVTableEntries()
+    public List<IPCVTableEntry> getVTableEntries()
     {
         return this.vtEntries;
+    }
+    
+    protected List<Address> getSTableAddresses()
+    {
+        return this.stAddrs;
     }
     
     public static String demangleIpcSymbol(String mangled)
@@ -311,17 +383,17 @@ public class IPCAnalyzer
         return out;
     }
     
-    public static class VTableEntry
+    public static class IPCVTableEntry
     {
         public final String name;
         public final Address addr;
-        public final List<Address> funcs;
+        public final List<Address> ipcFuncs;
         
-        private VTableEntry(String name, Address addr, List<Address> funcs)
+        private IPCVTableEntry(String name, Address addr, List<Address> ipcFuncs)
         {
             this.name = name;
             this.addr = addr;
-            this.funcs = funcs;
+            this.ipcFuncs = ipcFuncs;
         }
     }
 }
