@@ -218,7 +218,11 @@ public class IPCAnalyzer
                 implAddrs.clear();
             }
             
-            this.vtEntries.add(new IPCVTableEntry(name, vtAddr, implAddrs));
+            // Some IPC symbols are very long and Ghidra crops them off far too early by default.
+            // Let's shorten these.
+            String shortName = shortenIpcSymbol(name);
+            
+            this.vtEntries.add(new IPCVTableEntry(name, shortName, vtAddr, implAddrs));
         }
     }
     
@@ -362,8 +366,14 @@ public class IPCAnalyzer
             }
             
             out = builder.toString();
-        }
+        }            
         
+        return out;
+    }
+    
+    public static String shortenIpcSymbol(String longSym)
+    {
+        String out = longSym;
         String suffix = out.substring(out.lastIndexOf(':') + 1);
         
         if (out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatelessAllocator<"))
@@ -378,20 +388,21 @@ public class IPCAnalyzer
                 out += "::" + suffix;
             }
         }
-            
         
         return out;
     }
     
     public static class IPCVTableEntry
     {
-        public final String name;
+        public final String fullName;
+        public final String abvName;
         public final Address addr;
         public final List<Address> ipcFuncs;
         
-        private IPCVTableEntry(String name, Address addr, List<Address> ipcFuncs)
+        private IPCVTableEntry(String fullName, String abvName, Address addr, List<Address> ipcFuncs)
         {
-            this.name = name;
+            this.fullName = fullName;
+            this.abvName = abvName;
             this.addr = addr;
             this.ipcFuncs = ipcFuncs;
         }

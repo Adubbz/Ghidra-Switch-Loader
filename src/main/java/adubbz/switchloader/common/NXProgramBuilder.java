@@ -397,12 +397,16 @@ public abstract class NXProgramBuilder
         
         for (IPCVTableEntry entry : ipcAnalyzer.getVTableEntries())
         {
-            String entryNameNoSuffix = entry.name.replace("::vtable", "");
+            String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
             
             // Set the vtable name
             if (!this.program.getSymbolTable().hasSymbol(entry.addr))
             {
-                this.program.getSymbolTable().createLabel(entry.addr, entry.name, null, SourceType.IMPORTED);
+                // For shortened names, leave a comment so the user knows what the original name is
+                if (entry.fullName != entry.abvName)
+                    this.program.getListing().setComment(entry.addr, CodeUnit.REPEATABLE_COMMENT, entry.fullName);
+                
+                this.program.getSymbolTable().createLabel(entry.addr, entry.abvName, null, SourceType.IMPORTED);
             }
             
             // Label the four functions that exist for all ipc vtables
