@@ -12,17 +12,17 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Set;
+
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
 import adubbz.switchloader.nxo.NXOSectionType;
-import adubbz.switchloader.util.ByteUtil;
 import generic.stl.Pair;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
-import ghidra.app.util.demangler.DemangledException;
 import ghidra.app.util.demangler.DemangledObject;
 import ghidra.app.util.demangler.DemanglerUtil;
 import ghidra.program.model.address.Address;
@@ -41,7 +41,7 @@ public class IPCAnalyzer
     protected NXOHeader nxo;
     
     protected List<Address> vtAddrs = new ArrayList<>();
-    protected List<Address> stAddrs = new ArrayList<>();
+    protected Multimap<Address, Address> sTableProcessFuncMap = HashMultimap.create();
     
     protected List<IPCVTableEntry> vtEntries = new ArrayList<>();
     
@@ -283,7 +283,9 @@ public class IPCAnalyzer
                 
                 if (pRetOff > off)
                 {
-                    this.stAddrs.add(this.aSpace.getAddress(this.nxo.getBaseAddress() + sTableOffset));
+                    Address stAddr = this.aSpace.getAddress(this.nxo.getBaseAddress() + sTableOffset);
+                    Address pFuncAddr = this.aSpace.getAddress(this.nxo.getBaseAddress() + processFuncOffset);
+                    this.sTableProcessFuncMap.put(stAddr, pFuncAddr);
                 }
             }
         }
@@ -327,9 +329,9 @@ public class IPCAnalyzer
         return this.vtEntries;
     }
     
-    protected List<Address> getSTableAddresses()
+    protected Set<Address> getSTableAddresses()
     {
-        return this.stAddrs;
+        return this.sTableProcessFuncMap.keySet();
     }
     
     public static String demangleIpcSymbol(String mangled)
@@ -378,17 +380,26 @@ public class IPCAnalyzer
         
         if (out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatelessAllocator<"))
         {
-            String abvNamePrefix = "_tO2N<";
-            int abvNamePrefixIndex = out.indexOf(abvNamePrefix);
+            String abvNamePrefixOld = "nn::sf::detail::EmplacedImplHolder<";
+            String abvNamePrefixNew = "_tO2N<";
             
-            if (abvNamePrefixIndex != -1)
+            int abvNamePrefixOldIndex = out.indexOf(abvNamePrefixOld);
+            int abvNamePrefixNewIndex = out.indexOf(abvNamePrefixNew);
+            
+            if (abvNamePrefixOldIndex != -1)
             {
-                int abvNameStart = abvNamePrefixIndex + abvNamePrefix.length();
-                out = out.substring(abvNameStart, out.indexOf('>', abvNameStart));
-                out += "::" + suffix;
+                int abvNameStart = abvNamePrefixOldIndex + abvNamePrefixOld.length();
+                out = out.substring(abvNameStart, out.indexOf(',', abvNameStart));
             }
+            else if (abvNamePrefixNewIndex != -1)
+            {
+                int abvNameStart = abvNamePrefixNewIndex + abvNamePrefixNew.length();
+                out = out.substring(abvNameStart, out.indexOf('>', abvNameStart));
+            }
+            
+            out += "::" + suffix;
         }
-        
+
         return out;
     }
     
