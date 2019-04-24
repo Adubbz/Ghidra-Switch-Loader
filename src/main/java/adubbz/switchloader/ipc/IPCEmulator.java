@@ -8,10 +8,13 @@ package adubbz.switchloader.ipc;
 
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.apache.commons.compress.utils.Lists;
 import org.python.google.common.collect.Maps;
 
 import adubbz.switchloader.util.ByteUtil;
@@ -27,13 +30,20 @@ import ghidra.pcode.memstate.MemoryFaultHandler;
 import ghidra.pcode.memstate.MemoryPageBank;
 import ghidra.pcode.memstate.MemoryState;
 import ghidra.pcode.utils.Utils;
+import ghidra.program.database.ProgramDB;
+import ghidra.program.database.code.CodeManager;
+import ghidra.program.disassemble.Disassembler;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.lang.InstructionPrototype;
+import ghidra.program.model.lang.OperandType;
 import ghidra.program.model.lang.Register;
+import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;
+import ghidra.util.task.TaskMonitorAdapter;
 
 public class IPCEmulator 
 {
@@ -46,6 +56,9 @@ public class IPCEmulator
     private MemoryBank registerBank;
     private BreakTableCallBack bTable;
     private Emulate emu;
+    private Disassembler disassembler;
+    
+    private List<Consumer<Long>> instructionHandlers = Lists.newArrayList();
     
     private long messageSize;
     private long messagePtr;
@@ -109,6 +122,7 @@ public class IPCEmulator
         
         this.bTable = new BreakTableCallBack(this.sLang);
         this.emu = new Emulate(this.sLang, this.state, this.bTable);
+        this.disassembler = Disassembler.getDisassembler(this.program, TaskMonitorAdapter.DUMMY_MONITOR, null);
         
         // Copy over our binary to the emulator's memory, typically 7100000000
         Memory programMemory = this.program.getMemory();
@@ -215,6 +229,7 @@ public class IPCEmulator
     
     public IPCTrace emulateCommand(Address procFuncAddr, int cmd, byte[] data)
     {
+        this.instructionHandlers.clear(); // Clear any existing instruction handlers
         this.currentTrace = new IPCTrace(cmd, procFuncAddr.getOffset());
         
         // Clear out any existing IPC message data
@@ -236,9 +251,21 @@ public class IPCEmulator
         // Set to the start of the process function
         emu.setExecuteAddress(procFuncAddr);
         
+        // Disassemble the proc function so we can get instructions from it
+        disassembler.disassemble(procFuncAddr, null);
+        
         while (true)
         {
-            Msg.info(this, String.format("PC: 0x%X", state.getValue("pc")));
+            long pc = state.getValue("pc");
+            Address pcAddr = this.sLang.getDefaultSpace().getAddress(pc);
+            
+            // Pre-process instructions
+            for (Consumer<Long> instructionHandler : this.instructionHandlers)
+            {
+                instructionHandler.accept(pc);
+            }
+            
+            //Msg.info(this, String.format("PC: 0x%X", pc));
             if (emu.getExecuteAddress().getOffset() == 0)
             {
                 Msg.info(this, "Execute address is 0, breaking");
@@ -407,6 +434,44 @@ public class IPCEmulator
                 throw new RuntimeException("Too many out handles!");
             
             this.currentTrace.lr = this.state.getValue("x30");
+            
+            if (this.currentTrace.inInterfaces > 0)
+            {
+                // Add a handler to cheat the cmp x8, x9 that usually happens
+                this.instructionHandlers.add((off) -> 
+                {
+                    Address pcAddr = this.sLang.getDefaultSpace().getAddress(off);
+                    CodeManager codeManager = ((ProgramDB)this.program).getCodeManager();
+                    Instruction currentInstruction = codeManager.getInstructionAt(pcAddr);
+                    
+                    // Attempt to disassemble the instruction so we can try again
+                    if (currentInstruction == null)
+                    {
+                        disassembler.disassemble(pcAddr, null);
+                        currentInstruction = codeManager.getInstructionAt(pcAddr);
+                    }
+                    
+                    if (currentInstruction != null)
+                    {
+                        InstructionPrototype prototype = currentInstruction.getPrototype();
+                        String mnemonic = prototype.getMnemonic(currentInstruction.getInstructionContext());
+                        
+                        if (mnemonic.equals("cmp") && currentInstruction.getOperandType(0) == OperandType.REGISTER && currentInstruction.getOperandType(1) == OperandType.REGISTER)
+                        {
+                            Register r0 = currentInstruction.getRegister(0);
+                            Register r1 = currentInstruction.getRegister(1);
+                            
+                            // Cheat time!
+                            if (r0.getName().equals("x8") && r1.getName().equals("x9"))
+                            {
+                                long x9 = this.state.getValue("x9");
+                                this.state.setValue("x8", x9);
+                                this.state.setValue("NZCV", 0b0100);
+                            }
+                        }
+                    }
+                });
+            }
         }
         catch (Exception e)
         {
