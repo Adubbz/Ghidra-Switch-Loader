@@ -34,8 +34,10 @@ import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.lang.CompilerSpec;
+import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.Language;
 import ghidra.program.model.lang.LanguageCompilerSpecPair;
+import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.Program;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -43,6 +45,7 @@ import ghidra.util.task.TaskMonitor;
 public class SwitchLoader extends BinaryLoader 
 {
     public static final String SWITCH_NAME = "Nintendo Switch Binary";
+    public static final LanguageID LANG_ID = new LanguageID("AARCH64:LE:64:v8A");
     private BinaryType binaryType;
 
     @Override
@@ -76,7 +79,7 @@ public class SwitchLoader extends BinaryLoader
         else
             return loadSpecs;
 
-        loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair("AARCH64:LE:64:v8A", "default"), true));
+        loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(LANG_ID, new CompilerSpecID("default")), true));
 
         return loadSpecs;
     }

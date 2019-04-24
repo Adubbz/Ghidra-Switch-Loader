@@ -16,7 +16,8 @@ import java.util.Map;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 
-import adubbz.switchloader.common.IPCAnalyzer.IPCVTableEntry;
+import adubbz.switchloader.ipc.IPCAnalyzer;
+import adubbz.switchloader.ipc.IPCAnalyzer.IPCVTableEntry;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
@@ -482,7 +483,7 @@ public abstract class NXProgramBuilder
             }
         }
         
-        for (Address addr : ipcAnalyzer.getSTableAddresses())
+        for (Address addr : ipcAnalyzer.getSTableAddrs())
         {
             this.createPointer(addr);
             

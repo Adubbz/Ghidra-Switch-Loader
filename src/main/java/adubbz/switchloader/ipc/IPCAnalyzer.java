@@ -4,34 +4,48 @@
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-package adubbz.switchloader.common;
+package adubbz.switchloader.ipc;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.python.google.common.collect.Maps;
+
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 
+import adubbz.switchloader.common.NXRelocation;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
 import adubbz.switchloader.nxo.NXOSectionType;
 import generic.stl.Pair;
+import ghidra.app.plugin.processors.sleigh.SleighLanguage;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.demangler.DemangledObject;
 import ghidra.app.util.demangler.DemanglerUtil;
+import ghidra.pcode.emulate.BreakTable;
+import ghidra.pcode.emulate.BreakTableCallBack;
+import ghidra.pcode.emulate.Emulate;
+import ghidra.pcode.memstate.MemoryBank;
+import ghidra.pcode.memstate.MemoryFaultHandler;
+import ghidra.pcode.memstate.MemoryPageBank;
+import ghidra.pcode.memstate.MemoryState;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressSpace;
+import ghidra.program.model.lang.Register;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.util.DefaultLanguageService;
 import ghidra.util.Msg;
 
 public class IPCAnalyzer 
@@ -41,7 +55,7 @@ public class IPCAnalyzer
     protected NXOHeader nxo;
     
     protected List<Address> vtAddrs = new ArrayList<>();
-    protected Multimap<Address, Address> sTableProcessFuncMap = HashMultimap.create();
+    protected Map<Address, Address> sTableProcessFuncMap = Maps.newHashMap();
     
     protected List<IPCVTableEntry> vtEntries = new ArrayList<>();
     
@@ -56,6 +70,7 @@ public class IPCAnalyzer
             this.locateIpcVtables();
             this.createVTableEntries(vtAddrs);
             this.locateSTables();
+            this.emulateProcessFunctions();
         }
         catch (Exception e)
         {
@@ -291,6 +306,17 @@ public class IPCAnalyzer
         }
     }
     
+    protected void emulateProcessFunctions() throws MemoryAccessException
+    {
+        IPCEmulator ipcEmu = new IPCEmulator(this.program, this);
+        
+        for (Address procFuncAddr : this.getProcessFuncAddrs())
+        {
+            IPCTrace trace = ipcEmu.emulateCommand(procFuncAddr, 10);
+            trace.printTrace();
+        }
+    }
+    
     private Map<Address, Address> gotDataSyms = null;
     
     /**
@@ -329,9 +355,14 @@ public class IPCAnalyzer
         return this.vtEntries;
     }
     
-    protected Set<Address> getSTableAddresses()
+    public Set<Address> getSTableAddrs()
     {
         return this.sTableProcessFuncMap.keySet();
+    }
+    
+    public Collection<Address> getProcessFuncAddrs()
+    {
+        return this.sTableProcessFuncMap.values();
     }
     
     public static String demangleIpcSymbol(String mangled)
