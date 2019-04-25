@@ -140,12 +140,14 @@ public abstract class NXProgramBuilder
             this.setupRelocations();
             this.createGlobalOffsetTable();
             this.memBlockHelper.finalizeSections();
+            
+            // Create BSS. This needs to be done before the EXTERNAL block is created in setupImports
+            Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset());
+            Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + adapter.getMOD0().getBssSize()));
+            this.mbu.createUninitializedBlock(false, ".bss", bssStartAddr, adapter.getMOD0().getBssSize(), "", null, true, true, false);
+            
             this.setupImports(monitor);
             this.performRelocations();
-            
-            // Create BSS
-            this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
-            
             this.markupIpc(monitor);
             
             // Set all data in the GOT to the pointer data type
