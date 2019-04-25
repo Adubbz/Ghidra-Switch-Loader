@@ -22,9 +22,12 @@ import org.python.google.common.collect.Maps;
 import org.python.google.common.collect.Sets;
 
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 
 import adubbz.switchloader.common.NXRelocation;
+import adubbz.switchloader.ipc.IPCAnalyzer.IPCVTableEntry;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
@@ -389,7 +392,7 @@ public class IPCAnalyzer
     {
         // Map process func addrs to vtable addrs
         Map<Address, Address> procFuncVtMap = Maps.newHashMap();
-        List<IPCVTableEntry> possibilities = this.getVTableEntries();
+        List<IPCVTableEntry> possibilities = Lists.newArrayList(this.getVTableEntries().iterator());
         
         for (Address procFuncAddr : this.getProcessFuncAddrs())
         {
@@ -402,7 +405,6 @@ public class IPCAnalyzer
             // See if there is a single entry that *exactly* matches the vtable size
             if (filteredPossibilities.size() == 1)
             {
-                Msg.info(this, "First heuristic");
                 IPCVTableEntry vtEntry = filteredPossibilities.get(0);
                 procFuncVtMap.put(procFuncAddr, vtEntry.addr);
                 possibilities.remove(vtEntry);
@@ -414,7 +416,6 @@ public class IPCAnalyzer
             // See if there is a single entry that is equal to or greater than the vtable size
             if (filteredPossibilities.size() == 1)
             {
-                Msg.info(this, "Second heuristic");
                 IPCVTableEntry vtEntry = filteredPossibilities.get(0);
                 procFuncVtMap.put(procFuncAddr, vtEntry.addr);
                 possibilities.remove(vtEntry);
@@ -434,7 +435,6 @@ public class IPCAnalyzer
                 // As there are four of these, the check will fail.
                 if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getVtableSize(unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).collect(Collectors.toList()).size() == 1)
                 {
-                    Msg.info(this, "Final heuristic");
                     procFuncVtMap.put(procFuncAddr, filteredPossibility.addr);
                     possibilities.remove(filteredPossibility);
                     break;
@@ -481,19 +481,19 @@ public class IPCAnalyzer
         return gotDataSyms;
     }
     
-    public List<IPCVTableEntry> getVTableEntries()
+    public ImmutableList<IPCVTableEntry> getVTableEntries()
     {
-        return this.vtEntries;
+        return ImmutableList.copyOf(this.vtEntries);
     }
     
-    public Set<Address> getSTableAddrs()
+    public ImmutableSet<Address> getSTableAddrs()
     {
-        return this.sTableProcessFuncMap.keySet();
+        return ImmutableSet.copyOf(this.sTableProcessFuncMap.keySet());
     }
     
-    public Collection<Address> getProcessFuncAddrs()
+    public ImmutableList<Address> getProcessFuncAddrs()
     {
-        return this.sTableProcessFuncMap.values();
+        return ImmutableList.copyOf(this.sTableProcessFuncMap.values());
     }
     
     public static String demangleIpcSymbol(String mangled)
