@@ -126,7 +126,7 @@ public class IPCEmulator
         
         // Copy over our binary to the emulator's memory, typically 7100000000
         Memory programMemory = this.program.getMemory();
-        byte[] programBytes = new byte[(int)programMemory.getMaxAddress().getOffset()];
+        byte[] programBytes = new byte[(int)programMemory.getMaxAddress().getOffset()+1];
         
         // Copy memory blocks manually. The entire thing can't be copied at once because there are gaps between segments
         for (MemoryBlock block : programMemory.getBlocks())

@@ -149,9 +149,14 @@ public abstract class NXProgramBuilder
             this.markupIpc(monitor);
             
             // Set all data in the GOT to the pointer data type
-            for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
+            // NOTE: Currently the got range may be null in e.g. old libnx nros
+            // We may want to manually figure this out ourselves in future.
+            if (this.gotRange != null)
             {
-                this.createPointer(addr);
+                for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
+                {
+                    this.createPointer(addr);
+                }
             }
         }
         catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException | LockException e)
@@ -310,6 +315,8 @@ public abstract class NXProgramBuilder
             long gotStartOff = this.gotRange.getMinAddress().getOffset() - this.nxo.getBaseAddress();
             long gotEndOff = this.gotRange.getMaxAddress().getOffset() - this.nxo.getBaseAddress();
             long gotSize = gotEndOff - gotStartOff;
+            
+            Msg.info(this, String.format("Created got from 0x%X to 0x%X", this.gotRange.getMinAddress().getOffset(), this.gotRange.getMaxAddress().getOffset()));
             this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
         }
     }
