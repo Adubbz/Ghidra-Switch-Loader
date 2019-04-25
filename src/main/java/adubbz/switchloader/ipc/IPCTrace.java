@@ -30,10 +30,15 @@ public class IPCTrace
         this.procFuncAddr = procFuncAddr;
     }
     
+    public boolean hasDescription()
+    {
+        return bytesIn != -1 || bytesOut != -1 || bufferCount != -1 || inInterfaces != -1 ||
+                outInterfaces != -1 || inHandles != -1 || outHandles != -1 || lr != -1;
+    }
+    
     public boolean isCorrect()
     {
-        if (bytesIn == -1 && bytesOut == -1 && bufferCount == -1 && inInterfaces == -1 &&
-            outInterfaces == -1 && inHandles == -1 && outHandles == -1 && lr == -1)
+        if (!this.hasDescription())
         {
             return true;
         }

@@ -143,7 +143,7 @@ public abstract class NXProgramBuilder
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
             
-            this.markupIpcVTables();
+            this.markupIpcVTables(monitor);
             
             // Set all data in the GOT to the pointer data type
             for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
@@ -413,10 +413,10 @@ public abstract class NXProgramBuilder
         }
     }
     
-    protected void markupIpcVTables() throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
+    protected void markupIpcVTables(TaskMonitor monitor) throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
     {
         // Analyze and label any IPC info found
-        IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo);
+        IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo, monitor);
         
         for (IPCVTableEntry entry : ipcAnalyzer.getVTableEntries())
         {

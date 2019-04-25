@@ -7,6 +7,7 @@
 package adubbz.switchloader.ipc;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -108,7 +109,6 @@ public class IPCEmulator
                 Msg.info(this, String.format("Unknwon address 0x%X", address.getOffset()));
                 return false;
             }
-    
         };
         
         this.sLang = (SleighLanguage)this.program.getLanguage();
@@ -141,7 +141,6 @@ public class IPCEmulator
                 
                 // Copy the block bytes to the program bytes
                 long blockOff = block.getStart().getOffset() - this.program.getImageBase().getOffset();
-                //Msg.info(this, String.format("Copying 0x%X bytes to 0x%X", block.getSize(), blockOff));
                 System.arraycopy(blockBytes, 0, programBytes, (int)blockOff, (int)block.getSize());
             }
         }
@@ -215,20 +214,66 @@ public class IPCEmulator
         this.bufferSize = 0x1000;
         this.bufferMemory = this.calloc(this.bufferSize);
         this.outputMemory = this.calloc(0x1000);
-        
-        for (Register reg : this.sLang.getRegisters())
-        {
-            //Msg.info(this, reg.getName());
-        }
     }
     
     public IPCTrace emulateCommand(Address procFuncAddr, int cmd)
     {
-        return this.emulateCommand(procFuncAddr, cmd, null);
+        // Some commands have in-dispatcher validation. If we fail this
+        // validation we miss some information about vtable offsets and
+        // returned objects. This tries to brute-force until we find an
+        // input that passes that validation.
+
+        int[] bufferSizes = new int[] { 128, 33, 1 };
+        ByteBuffer nonZeroBuf = ByteBuffer.allocate(0x8 * 6);
+        
+        for (int i = 0; i < 6; i++) nonZeroBuf.putLong(1);
+        
+        // All-zeros, standard buffer size
+        IPCTrace trace = this.emulateCommand(procFuncAddr, cmd, null, 0x1000);
+        
+        if (trace.isCorrect())
+            return trace;
+            
+        // Pass checks for non-zero inline data
+        trace = this.emulateCommand(procFuncAddr, cmd, nonZeroBuf.array(), 0x1000);
+
+        if (trace.isCorrect())
+            return trace;
+        
+        // All-zeros, Pass buffer size checks
+        for (int bufSize : bufferSizes)
+        {
+            trace = this.emulateCommand(procFuncAddr, cmd, null, bufSize);
+            
+            if (trace.isCorrect())
+                return trace;
+        }
+        
+        nonZeroBuf = ByteBuffer.allocate(0x8 * 4);
+        for (int i = 0; i < 4; i++) nonZeroBuf.putLong(1);
+
+        // Pass checks for buffer size, and non-zero inline data
+        for (int bufSize : bufferSizes)
+        {
+            trace = this.emulateCommand(procFuncAddr, cmd, nonZeroBuf.array(), bufSize);
+            
+            if (trace.isCorrect())
+                return trace;
+        }
+        
+        Msg.warn(this, String.format("Warning: unable to brute-force validation on dispatch_func %X command %d", procFuncAddr.getOffset(), cmd));
+        return trace;
     }
     
-    public IPCTrace emulateCommand(Address procFuncAddr, int cmd, byte[] data)
+    public IPCTrace emulateCommand(Address procFuncAddr, int cmd, byte[] data, int bufferSize)
     {
+        // We allocate a fixed 0x1000 for the buffer. Therefore we only allow adjustments to less than or equal
+        // to that.
+        if (bufferSize < 0 || bufferSize > 0x1000)
+            throw new RuntimeException("Invalid buffer size provided");
+        
+        this.bufferSize = bufferSize;
+        
         this.instructionHandlers.clear(); // Clear any existing instruction handlers
         this.currentTrace = new IPCTrace(cmd, procFuncAddr.getOffset());
         
@@ -265,18 +310,12 @@ public class IPCEmulator
                 instructionHandler.accept(pc);
             }
             
-            //Msg.info(this, String.format("PC: 0x%X", pc));
             if (emu.getExecuteAddress().getOffset() == 0)
             {
-                Msg.info(this, "Execute address is 0, breaking");
                 break;
             }
                 
             emu.executeInstruction(true);
-            //Msg.info(this, String.format("X9: 0x%X", state.getValue("x9")));
-            //Msg.info(this, String.format("X10: 0x%X", state.getValue("x10")));
-            //Msg.info(this, String.format("CY: 0x%X", state.getValue("CY"))); Carry
-            //Msg.info(this, "------------------");
         }
         
         return this.currentTrace;
@@ -331,7 +370,7 @@ public class IPCEmulator
                     {
                         // Failed, halt execution.
                         IPCEmulator.this.emu.setExecuteAddress(addr.getNewAddress(0));
-                        Msg.info(this, "HLE function returned false, halting further execution...");
+                        //Msg.info(this, "HLE function returned false, halting further execution...");
                     }
                     
                     // Don't execute the instruction. We've handled it
@@ -383,7 +422,6 @@ public class IPCEmulator
     
     private boolean targetFunction(long offset)
     {
-        Msg.info(this, String.format("Target function vtable off 0x%X", offset));
         this.currentTrace.vtOffset = offset;
         this.returnFromFunc(0);
         return true;
@@ -391,8 +429,6 @@ public class IPCEmulator
     
     private boolean PrepareForProcess()
     {
-        Msg.info(this, "PrepareForProcess called!");
-        
         long metaInfoPtr = this.state.getValue("x1");
         long metaInfoSize = 0x90;
         byte[] metaInfo = new byte[(int)metaInfoSize];
@@ -484,7 +520,6 @@ public class IPCEmulator
     
     private boolean OverwriteClientProcessId()
     {
-        Msg.info(this, "OverwriteClientProcessId called!");
         long out = this.state.getValue("x1");
         this.setLong(out, 0);
         this.returnFromFunc(0);
@@ -493,8 +528,6 @@ public class IPCEmulator
 
     private boolean GetBuffers()
     {
-        Msg.info(this, "GetBuffers called!");
-        
         long out = this.state.getValue("x1");
         
         for (long i = out; i < out + this.currentTrace.bufferCount * 0x10; i += 0x10)
@@ -509,14 +542,12 @@ public class IPCEmulator
     
     private boolean GetInNativeHandles()
     {
-        Msg.info(this, "GetInNativeHandles called!");
         this.returnFromFunc(0);
         return true;
     }
     
     private boolean GetInObjects()
     {
-        Msg.info(this, "GetInObjects called!");
         long out = this.state.getValue("x1");
         
         if (this.currentTrace.inInterfaces != 1)
@@ -530,7 +561,6 @@ public class IPCEmulator
     
     private boolean BeginPreparingForReply()
     {
-        Msg.info(this, "BeginPreparingForReply called!");
         long off = this.state.getValue("x1");
         this.setLong(off, this.outputMemory);
         this.setLong(off + 0x8, 0x1000);
@@ -547,13 +577,11 @@ public class IPCEmulator
     private boolean SetOutObjects()
     {
         // Stubbed
-        Msg.info(this, "SetOutObjects called!");
         return false;
     }
     
     private boolean SetOutNativeHandles()
     {
-        Msg.info(this, "SetOutNativeHandles called!");
         this.returnFromFunc(0);
         return true;
     }
@@ -561,14 +589,12 @@ public class IPCEmulator
     private boolean BeginPreparingForErrorReply()
     {
         // Stubbed
-        Msg.info(this, "BeginPreparingForErrorReply called!");
         return false;
     }
     
     private boolean EndPreparingForReply()
     {
         // Stubbed
-        Msg.info(this, "EndPreparingForReply called!");
         this.returnFromFunc(0);
         return false;
     }
