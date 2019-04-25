@@ -502,6 +502,19 @@ public abstract class NXProgramBuilder
                 
                 if (!this.hasImportedSymbol(ipcCmdImplAddr))
                     this.program.getSymbolTable().createLabel(ipcCmdImplAddr, String.format("%s::Cmd%d", entryNameNoSuffix, trace.cmdId), null, SourceType.IMPORTED);
+                
+                String implComment = ""         +
+                        "IPC INFORMATION\n"       +
+                        "Bytes In:       0x%X\n"  +
+                        "Bytes Out:      0x%X\n"  +
+                        "Buffer Count:   0x%X\n"  +
+                        "In Interfaces:  0x%X\n"  +
+                        "Out Interfaces: 0x%X\n"  +
+                        "In Handles:     0x%X\n"  +
+                        "Out Handles:    0x%X";
+                
+                implComment = String.format(implComment, trace.bytesIn, trace.bytesOut, trace.bufferCount, trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles);
+                this.program.getListing().setComment(ipcCmdImplAddr, CodeUnit.PLATE_COMMENT, implComment);
             }
         }
         
