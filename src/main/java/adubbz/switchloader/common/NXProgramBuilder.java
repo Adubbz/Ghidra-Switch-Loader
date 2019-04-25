@@ -537,7 +537,23 @@ public abstract class NXProgramBuilder
             this.createPointer(addr);
             
             if (!this.hasImportedSymbol(addr))
-                this.program.getSymbolTable().createLabel(addr, String.format("SRV_S_TAB_%X", addr.getOffset()), null, SourceType.IMPORTED);
+            {
+                Address procFuncAddr = ipcAnalyzer.getProcFuncAddrFromSTableAddr(addr);
+                String sTableName = String.format("SRV_S_TAB_%X", addr.getOffset());
+                
+                if (procFuncAddr != null)
+                {
+                    IPCVTableEntry entry = ipcAnalyzer.getIPCVTableEntryFromProcessFuncAddr(procFuncAddr);
+                    
+                    if (entry != null)
+                    {
+                        String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
+                        sTableName = entryNameNoSuffix + "::s_Table";
+                    }
+                }
+                
+                this.program.getSymbolTable().createLabel(addr, sTableName, null, SourceType.IMPORTED);
+            }
         }
     }
     
