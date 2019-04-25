@@ -569,7 +569,7 @@ public class IPCAnalyzer
         String out = longSym;
         String suffix = out.substring(out.lastIndexOf(':') + 1);
         
-        if (out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatelessAllocator<"))
+        if (out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatelessAllocator<") || out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatefulAllocator<"))
         {
             String abvNamePrefixOld = "nn::sf::detail::EmplacedImplHolder<";
             String abvNamePrefixNew = "_tO2N<";
