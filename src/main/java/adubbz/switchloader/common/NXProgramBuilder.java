@@ -427,8 +427,21 @@ public abstract class NXProgramBuilder
             Address processFuncAddr = ipcAnalyzer.getProcessFuncAddrFromVtEntry(entry);
             
             if (processFuncAddr != null)
+            {
+                Address sTableAddr = ipcAnalyzer.getSTableFromProcessFuncAddr(processFuncAddr);
+                String ipcComment = ""                +
+                        "IPC INFORMATION\n"           +
+                        "s_Table Address:       0x%X";
+                
+                if (sTableAddr != null)
+                {
+                    ipcComment = String.format(ipcComment, sTableAddr.getOffset());
+                    this.program.getListing().setComment(entry.addr, CodeUnit.PLATE_COMMENT, ipcComment);
+                }
+                
                 ipcTraces = Lists.newArrayList(ipcAnalyzer.getProcessFuncTraces(processFuncAddr).iterator());
-            
+            }
+                
             String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
             
             // Set the vtable name

@@ -515,6 +515,11 @@ public class IPCAnalyzer
         return ImmutableList.copyOf(this.sTableProcessFuncMap.values());
     }
     
+    public Address getSTableFromProcessFuncAddr(Address procFuncAddr)
+    {
+        return this.sTableProcessFuncMap.inverse().get(procFuncAddr);
+    }
+    
     public Address getProcessFuncAddrFromVtEntry(IPCVTableEntry entry)
     {
         return this.procFuncVtMap.inverse().get(entry);
