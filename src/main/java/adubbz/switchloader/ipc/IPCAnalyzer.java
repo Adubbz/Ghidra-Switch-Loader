@@ -13,7 +13,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.compress.utils.Lists;
 import org.python.google.common.collect.Maps;
@@ -60,6 +62,7 @@ public class IPCAnalyzer
     
     protected List<Address> vtAddrs = new ArrayList<>();
     protected Map<Address, Address> sTableProcessFuncMap = Maps.newHashMap();
+    protected Multimap<Address, IPCTrace> processFuncTraces = HashMultimap.create();
     
     protected List<IPCVTableEntry> vtEntries = new ArrayList<>();
     
@@ -76,6 +79,7 @@ public class IPCAnalyzer
             this.createVTableEntries(vtAddrs);
             this.locateSTables();
             this.emulateProcessFunctions();
+            this.matchVtables();
         }
         catch (Exception e)
         {
@@ -348,7 +352,8 @@ public class IPCAnalyzer
             }
         }
         
-        for (Address procFuncAddr : this.getProcessFuncAddrs())
+        // Recreate the map as we can't sort the original
+        for (Address procFuncAddr : map.keySet())
         {
             List<IPCTrace> traces = Lists.newArrayList(map.get(procFuncAddr).iterator());
             
@@ -356,8 +361,90 @@ public class IPCAnalyzer
             
             for (IPCTrace trace : traces)
             {
-                trace.printTrace();
+                this.processFuncTraces.put(procFuncAddr, trace);
             }
+        }     
+    }
+    
+    protected int getVtableSize(Address procFuncAddr)
+    {
+        if (!this.processFuncTraces.containsKey(procFuncAddr) || this.processFuncTraces.get(procFuncAddr).isEmpty())
+            return 0;
+        
+        IPCTrace maxTrace = null;
+        
+        for (IPCTrace trace : this.processFuncTraces.get(procFuncAddr))
+        {
+            if (trace.vtOffset == -1)
+                continue;
+            
+            if (maxTrace == null || trace.vtOffset > maxTrace.vtOffset)
+                maxTrace = trace;
+        }
+        
+        return (int)Math.max(this.processFuncTraces.get(procFuncAddr).size(), (maxTrace.vtOffset + 8 - 0x20) / 8);
+    }
+    
+    protected void matchVtables()
+    {
+        // Map process func addrs to vtable addrs
+        Map<Address, Address> procFuncVtMap = Maps.newHashMap();
+        List<IPCVTableEntry> possibilities = this.getVTableEntries();
+        
+        for (Address procFuncAddr : this.getProcessFuncAddrs())
+        {
+            // We've already found this address. No need to do it again
+            if (procFuncVtMap.keySet().contains(procFuncAddr))
+                continue;
+            
+            List<IPCVTableEntry> filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() == getVtableSize(procFuncAddr)).collect(Collectors.toList());
+            
+            // See if there is a single entry that *exactly* matches the vtable size
+            if (filteredPossibilities.size() == 1)
+            {
+                Msg.info(this, "First heuristic");
+                IPCVTableEntry vtEntry = filteredPossibilities.get(0);
+                procFuncVtMap.put(procFuncAddr, vtEntry.addr);
+                possibilities.remove(vtEntry);
+                continue;
+            }
+            
+            filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() >= getVtableSize(procFuncAddr)).collect(Collectors.toList());
+
+            // See if there is a single entry that is equal to or greater than the vtable size
+            if (filteredPossibilities.size() == 1)
+            {
+                Msg.info(this, "Second heuristic");
+                IPCVTableEntry vtEntry = filteredPossibilities.get(0);
+                procFuncVtMap.put(procFuncAddr, vtEntry.addr);
+                possibilities.remove(vtEntry);
+                continue;
+            }
+            
+            // Iterate over all the possible vtables with a size greater than our current process function
+            for (IPCVTableEntry filteredPossibility : filteredPossibilities)
+            {
+                List<Address> unlocatedProcFuncAddrs = this.getProcessFuncAddrs().stream().filter(pFAddr -> !procFuncVtMap.keySet().contains(pFAddr)).collect(Collectors.toList());
+                
+                // See if there is only a single trace set of size <= this vtable
+                // For example, if the process func vtable size is found by emulation to be 0x100, and we have previously found vtables of the following sizes, which have yet to be located:
+                // 0x10, 0x20, 0x60, 0x110, 0x230
+                // We will run this loop for both 0x110 and 0x230. 
+                // In the case of 0x110, we will then filter for sizes <= 0x110. These are 0x10, 0x20, 0x60 and 0x110
+                // As there are four of these, the check will fail.
+                if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getVtableSize(unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).collect(Collectors.toList()).size() == 1)
+                {
+                    Msg.info(this, "Final heuristic");
+                    procFuncVtMap.put(procFuncAddr, filteredPossibility.addr);
+                    possibilities.remove(filteredPossibility);
+                    break;
+                }
+            }
+        }
+        
+        for (Entry<Address, Address> entry : procFuncVtMap.entrySet())
+        {
+            Msg.info(this, String.format("Proc Func Addr: 0x%X -> VTable: 0x%X", entry.getKey().getOffset(), entry.getValue().getOffset()));
         }
     }
     
