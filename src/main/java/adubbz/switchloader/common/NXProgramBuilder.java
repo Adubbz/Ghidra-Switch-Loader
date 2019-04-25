@@ -13,11 +13,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.compress.utils.Lists;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 
 import adubbz.switchloader.ipc.IPCAnalyzer;
 import adubbz.switchloader.ipc.IPCAnalyzer.IPCVTableEntry;
+import adubbz.switchloader.ipc.IPCTrace;
 import adubbz.switchloader.nxo.NXOAdapter;
 import adubbz.switchloader.nxo.NXOHeader;
 import adubbz.switchloader.nxo.NXOSection;
@@ -143,7 +146,7 @@ public abstract class NXProgramBuilder
             // Create BSS
             this.mbu.createUninitializedBlock(false, ".bss", aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset()), adapter.getMOD0().getBssSize(), "", null, true, true, false);
             
-            this.markupIpcVTables(monitor);
+            this.markupIpc(monitor);
             
             // Set all data in the GOT to the pointer data type
             for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
@@ -413,17 +416,29 @@ public abstract class NXProgramBuilder
         }
     }
     
-    protected void markupIpcVTables(TaskMonitor monitor) throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
+    protected void markupIpc(TaskMonitor monitor) throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
     {
         // Analyze and label any IPC info found
         IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo, monitor);
         
         for (IPCVTableEntry entry : ipcAnalyzer.getVTableEntries())
         {
+            List<IPCTrace> ipcTraces = Lists.newArrayList();
+            Address processFuncAddr = ipcAnalyzer.getProcessFuncAddrFromVtEntry(entry);
+            
+            if (processFuncAddr != null)
+                ipcTraces = Lists.newArrayList(ipcAnalyzer.getProcessFuncTraces(processFuncAddr).iterator());
+            
             String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
             
+            for (Symbol sym : this.program.getSymbolTable().getSymbols(entry.addr))
+            {
+                Msg.info(this, "Existing symbol: " + sym.getName());
+                Msg.info(this, String.format("Bla %s", sym.getSource().toString()));
+            }
+            
             // Set the vtable name
-            if (!this.program.getSymbolTable().hasSymbol(entry.addr))
+            if (!this.hasImportedSymbol(entry.addr))
             {
                 // For shortened names, leave a comment so the user knows what the original name is
                 if (entry.fullName != entry.abvName)
@@ -464,7 +479,7 @@ public abstract class NXProgramBuilder
                 {
                     Address funcAddr = this.aSpace.getAddress(this.program.getMemory().getLong(vtAddr));
                     
-                    if (!this.program.getSymbolTable().hasSymbol(funcAddr))
+                    if (!this.hasImportedSymbol(funcAddr))
                         this.program.getSymbolTable().createLabel(funcAddr, name, null, SourceType.IMPORTED);
                 }
                 else
@@ -481,13 +496,27 @@ public abstract class NXProgramBuilder
                 // Set vtable func data types to pointers
                 this.createPointer(entry.addr.add(0x30 + i * 0x8));
             }
+            
+            for (IPCTrace trace : ipcTraces)
+            {
+                // Safety precaution. I *think* these should've been filtered out earlier though.
+                if (trace.vtOffset == -1 || !trace.hasDescription())
+                    continue;
+                
+                Address vtOffsetAddr = entry.addr.add(0x10 + trace.vtOffset);
+                Address ipcCmdImplAddr = this.aSpace.getAddress(this.program.getMemory().getLong(vtOffsetAddr));
+                
+                if (!this.hasImportedSymbol(ipcCmdImplAddr))
+                    this.program.getSymbolTable().createLabel(ipcCmdImplAddr, String.format("%s::Cmd%d", entryNameNoSuffix, trace.cmdId), null, SourceType.IMPORTED);
+            }
         }
         
+        // Annotate s_Tables
         for (Address addr : ipcAnalyzer.getSTableAddrs())
         {
             this.createPointer(addr);
             
-            if (!this.program.getSymbolTable().hasSymbol(addr))
+            if (!this.hasImportedSymbol(addr))
                 this.program.getSymbolTable().createLabel(addr, String.format("SRV_S_TAB_%X", addr.getOffset()), null, SourceType.IMPORTED);
         }
     }
@@ -727,6 +756,17 @@ public abstract class NXProgramBuilder
         Msg.error(this, cmd.getStatusMsg());
 
         return sym;
+    }
+    
+    public boolean hasImportedSymbol(Address addr)
+    {
+        for (Symbol sym : program.getSymbolTable().getSymbols(addr))
+        {
+            if (sym.getSource() == SourceType.IMPORTED)
+                return true;
+        }
+        
+        return false;
     }
     
     protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException, AddressOverflowException, AddressOutOfBoundsException

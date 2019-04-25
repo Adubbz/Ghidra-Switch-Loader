@@ -18,9 +18,12 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.commons.compress.utils.Lists;
+import org.python.google.common.collect.HashBiMap;
+import org.python.google.common.collect.ImmutableBiMap;
 import org.python.google.common.collect.Maps;
 import org.python.google.common.collect.Sets;
 
+import com.google.common.collect.BiMap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -64,8 +67,9 @@ public class IPCAnalyzer
     protected TaskMonitor monitor;
     
     protected List<Address> vtAddrs = new ArrayList<>();
-    protected Map<Address, Address> sTableProcessFuncMap = Maps.newHashMap();
+    protected HashBiMap<Address, Address> sTableProcessFuncMap = HashBiMap.create();
     protected Multimap<Address, IPCTrace> processFuncTraces = HashMultimap.create();
+    protected HashBiMap<Address, IPCVTableEntry> procFuncVtMap = HashBiMap.create();
     
     protected List<IPCVTableEntry> vtEntries = new ArrayList<>();
     
@@ -391,13 +395,12 @@ public class IPCAnalyzer
     protected void matchVtables()
     {
         // Map process func addrs to vtable addrs
-        Map<Address, Address> procFuncVtMap = Maps.newHashMap();
         List<IPCVTableEntry> possibilities = Lists.newArrayList(this.getVTableEntries().iterator());
         
         for (Address procFuncAddr : this.getProcessFuncAddrs())
         {
             // We've already found this address. No need to do it again
-            if (procFuncVtMap.keySet().contains(procFuncAddr))
+            if (this.procFuncVtMap.keySet().contains(procFuncAddr))
                 continue;
             
             List<IPCVTableEntry> filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() == getVtableSize(procFuncAddr)).collect(Collectors.toList());
@@ -406,7 +409,7 @@ public class IPCAnalyzer
             if (filteredPossibilities.size() == 1)
             {
                 IPCVTableEntry vtEntry = filteredPossibilities.get(0);
-                procFuncVtMap.put(procFuncAddr, vtEntry.addr);
+                this.procFuncVtMap.put(procFuncAddr, vtEntry);
                 possibilities.remove(vtEntry);
                 continue;
             }
@@ -417,7 +420,7 @@ public class IPCAnalyzer
             if (filteredPossibilities.size() == 1)
             {
                 IPCVTableEntry vtEntry = filteredPossibilities.get(0);
-                procFuncVtMap.put(procFuncAddr, vtEntry.addr);
+                this.procFuncVtMap.put(procFuncAddr, vtEntry);
                 possibilities.remove(vtEntry);
                 continue;
             }
@@ -435,16 +438,11 @@ public class IPCAnalyzer
                 // As there are four of these, the check will fail.
                 if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getVtableSize(unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).collect(Collectors.toList()).size() == 1)
                 {
-                    procFuncVtMap.put(procFuncAddr, filteredPossibility.addr);
+                    this.procFuncVtMap.put(procFuncAddr, filteredPossibility);
                     possibilities.remove(filteredPossibility);
                     break;
                 }
             }
-        }
-        
-        for (Entry<Address, Address> entry : procFuncVtMap.entrySet())
-        {
-            Msg.info(this, String.format("Proc Func Addr: 0x%X -> VTable: 0x%X", entry.getKey().getOffset(), entry.getValue().getOffset()));
         }
     }
     
@@ -494,6 +492,16 @@ public class IPCAnalyzer
     public ImmutableList<Address> getProcessFuncAddrs()
     {
         return ImmutableList.copyOf(this.sTableProcessFuncMap.values());
+    }
+    
+    public Address getProcessFuncAddrFromVtEntry(IPCVTableEntry entry)
+    {
+        return this.procFuncVtMap.inverse().get(entry);
+    }
+    
+    public Collection<IPCTrace> getProcessFuncTraces(Address processFuncAddr)
+    {
+        return this.processFuncTraces.get(processFuncAddr);
     }
     
     public static String demangleIpcSymbol(String mangled)
