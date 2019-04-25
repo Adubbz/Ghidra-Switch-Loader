@@ -431,12 +431,6 @@ public abstract class NXProgramBuilder
             
             String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
             
-            for (Symbol sym : this.program.getSymbolTable().getSymbols(entry.addr))
-            {
-                Msg.info(this, "Existing symbol: " + sym.getName());
-                Msg.info(this, String.format("Bla %s", sym.getSource().toString()));
-            }
-            
             // Set the vtable name
             if (!this.hasImportedSymbol(entry.addr))
             {

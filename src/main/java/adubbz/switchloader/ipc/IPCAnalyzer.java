@@ -243,9 +243,18 @@ public class IPCAnalyzer
                 }
             }
             
+            Set<Address> uniqueAddrs = new HashSet<Address>(implAddrs);
+            
             // There must be either 1 unique function without repeats, or more than one unique function with repeats allowed
-            if (new HashSet<Address>(implAddrs).size() <= 1 && implAddrs.size() != 1)
+            if (uniqueAddrs.size() <= 1 && implAddrs.size() != 1)
             {
+                Msg.info(this, String.format("Insufficient unique addresses for vtable at 0x%X", vtAddr.getOffset()));
+                
+                for (Address addr : uniqueAddrs)
+                {
+                    Msg.info(this, String.format("    Found: 0x%X", addr.getOffset()));
+                }
+                
                 implAddrs.clear();
             }
             
@@ -373,7 +382,7 @@ public class IPCAnalyzer
         }     
     }
     
-    protected int getVtableSize(Address procFuncAddr)
+    protected int getProcFuncVTableSize(Address procFuncAddr)
     {
         if (!this.processFuncTraces.containsKey(procFuncAddr) || this.processFuncTraces.get(procFuncAddr).isEmpty())
             return 0;
@@ -403,7 +412,7 @@ public class IPCAnalyzer
             if (this.procFuncVtMap.keySet().contains(procFuncAddr))
                 continue;
             
-            List<IPCVTableEntry> filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() == getVtableSize(procFuncAddr)).collect(Collectors.toList());
+            List<IPCVTableEntry> filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() == getProcFuncVTableSize(procFuncAddr)).collect(Collectors.toList());
             
             // See if there is a single entry that *exactly* matches the vtable size
             if (filteredPossibilities.size() == 1)
@@ -414,7 +423,7 @@ public class IPCAnalyzer
                 continue;
             }
             
-            filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() >= getVtableSize(procFuncAddr)).collect(Collectors.toList());
+            filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() >= getProcFuncVTableSize(procFuncAddr)).collect(Collectors.toList());
 
             // See if there is a single entry that is equal to or greater than the vtable size
             if (filteredPossibilities.size() == 1)
@@ -436,13 +445,25 @@ public class IPCAnalyzer
                 // We will run this loop for both 0x110 and 0x230. 
                 // In the case of 0x110, we will then filter for sizes <= 0x110. These are 0x10, 0x20, 0x60 and 0x110
                 // As there are four of these, the check will fail.
-                if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getVtableSize(unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).collect(Collectors.toList()).size() == 1)
+                if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getProcFuncVTableSize(unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).collect(Collectors.toList()).size() == 1)
                 {
                     this.procFuncVtMap.put(procFuncAddr, filteredPossibility);
                     possibilities.remove(filteredPossibility);
                     break;
                 }
             }
+        }
+        
+        List<Address> unlocatedProcFuncAddrs = this.getProcessFuncAddrs().stream().filter(pFAddr -> !procFuncVtMap.keySet().contains(pFAddr)).collect(Collectors.toList());
+        
+        for (Address addr : unlocatedProcFuncAddrs)
+        {
+            Msg.info(this, String.format("Unmatched process func at 0x%X. Calculated VTable Size: 0x%X", addr.getOffset(), getProcFuncVTableSize(addr)));
+        }
+        
+        for (IPCVTableEntry entry : possibilities)
+        {
+            Msg.info(this, String.format("Unmatched IPC VTable entry at 0x%X. VTable Size: 0x%X", entry.addr.getOffset(), entry.ipcFuncs.size()));
         }
     }
     
@@ -578,14 +599,14 @@ public class IPCAnalyzer
         public final String fullName;
         public final String abvName;
         public final Address addr;
-        public final List<Address> ipcFuncs;
+        public final ImmutableList<Address> ipcFuncs;
         
         private IPCVTableEntry(String fullName, String abvName, Address addr, List<Address> ipcFuncs)
         {
             this.fullName = fullName;
             this.abvName = abvName;
             this.addr = addr;
-            this.ipcFuncs = ipcFuncs;
+            this.ipcFuncs = ImmutableList.copyOf(ipcFuncs);
         }
     }
 }
