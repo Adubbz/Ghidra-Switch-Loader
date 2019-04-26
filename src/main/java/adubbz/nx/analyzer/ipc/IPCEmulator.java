@@ -6,24 +6,18 @@
  */
 package adubbz.nx.analyzer.ipc;
 
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.apache.commons.compress.utils.Lists;
-import org.python.google.common.collect.Maps;
 
 import adubbz.nx.util.ByteUtil;
 import ghidra.app.plugin.processors.sleigh.SleighLanguage;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.pcode.emulate.BreakCallBack;
-import ghidra.pcode.emulate.BreakTable;
 import ghidra.pcode.emulate.BreakTableCallBack;
 import ghidra.pcode.emulate.Emulate;
 import ghidra.pcode.memstate.MemoryBank;
@@ -49,7 +43,7 @@ import ghidra.util.task.TaskMonitorAdapter;
 public class IPCEmulator 
 {
     private Program program;
-    private IPCLocator analyzer;
+    public boolean hasSetup;
     
     private SleighLanguage sLang;
     private MemoryState state;
@@ -78,11 +72,23 @@ public class IPCEmulator
     
     private IPCTrace currentTrace;
     
-    public IPCEmulator(Program program, IPCLocator analyzer) throws MemoryAccessException
+    public IPCEmulator(Program program)
     {
         this.program = program;
-        this.analyzer = analyzer;
-        
+    
+        try 
+        {
+            this.setup();
+            this.hasSetup = true;
+        }
+        catch (MemoryAccessException e) 
+        {
+            Msg.error(this, "Failed to setup IPC emulator");
+        }
+    }
+    
+    public void setup() throws MemoryAccessException
+    {
         MemoryFaultHandler faultHandler = new MemoryFaultHandler()
         {
 
@@ -218,6 +224,9 @@ public class IPCEmulator
     
     public IPCTrace emulateCommand(Address procFuncAddr, int cmd)
     {
+        if (!this.hasSetup)
+            return null;
+        
         // Some commands have in-dispatcher validation. If we fail this
         // validation we miss some information about vtable offsets and
         // returned objects. This tries to brute-force until we find an
@@ -267,6 +276,9 @@ public class IPCEmulator
     
     public IPCTrace emulateCommand(Address procFuncAddr, int cmd, byte[] data, int bufferSize)
     {
+        if (!this.hasSetup)
+            return null;
+        
         // We allocate a fixed 0x1000 for the buffer. Therefore we only allow adjustments to less than or equal
         // to that.
         if (bufferSize < 0 || bufferSize > 0x1000)

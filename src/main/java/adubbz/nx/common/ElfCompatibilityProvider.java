@@ -17,7 +17,9 @@ import java.util.List;
 import java.util.Set;
 
 import adubbz.nx.util.ByteUtil;
+import adubbz.nx.util.FullMemoryByteProvider;
 import generic.continues.RethrowContinuesFactory;
+import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.MemoryByteProvider;
 import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
@@ -63,7 +65,7 @@ public class ElfCompatibilityProvider
     
     public ElfCompatibilityProvider(Program program)
     {
-        this(program, new MemoryByteProvider(program.getMemory(), program.getAddressFactory().getDefaultAddressSpace()));
+        this(program, new FullMemoryByteProvider(program));
     }
     
     public ElfDynamicTable getDynamicTable()
@@ -84,8 +86,6 @@ public class ElfCompatibilityProvider
             Msg.error(this, "Failed to create dynamic table", e);
         }
         
-        Msg.info(this, "Created dynamic table");
-    
         return this.dynamicTable;
     }
     
@@ -165,8 +165,6 @@ public class ElfCompatibilityProvider
             long dtHashOff = dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
             long nchain = this.factoryReader.readUnsignedInt(this.program.getImageBase().getOffset() + dtHashOff + 4);
             long symbolTableSize = nchain * symbolEntrySize;
-            
-            Msg.info(this, String.format("Creating symbol table at 0x%X of size 0x%X", symbolTableOff, symbolTableSize));
             
             Method m = ElfSymbolTable.class.getDeclaredMethod("createElfSymbolTable", FactoryBundledWithBinaryReader.class, ElfHeader.class, ElfSectionHeader.class, long.class, long.class, 
                     long.class, long.class, ElfStringTable.class, boolean.class);
@@ -291,6 +289,11 @@ public class ElfCompatibilityProvider
     protected MemoryBlock getDynamicBlock()
     {
         return this.program.getMemory().getBlock(".dynamic");
+    }
+    
+    public BinaryReader getReader()
+    {
+        return this.factoryReader;
     }
     
     // Fake only what is needed for an elf dynamic table

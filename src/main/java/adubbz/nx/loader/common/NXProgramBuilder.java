@@ -13,30 +13,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.compress.utils.Lists;
-
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 
-import adubbz.nx.analyzer.ipc.IPCLocator;
-import adubbz.nx.analyzer.ipc.IPCTrace;
-import adubbz.nx.analyzer.ipc.IPCLocator.IPCVTableEntry;
-import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.NXRelocation;
 import adubbz.nx.loader.nxo.NXOAdapter;
 import adubbz.nx.loader.nxo.NXOHeader;
 import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import adubbz.nx.util.UIUtil;
-import generic.continues.RethrowContinuesFactory;
 import ghidra.app.cmd.label.SetLabelPrimaryCmd;
 import ghidra.app.util.MemoryBlockUtil;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
-import ghidra.app.util.bin.format.elf.ElfDynamic;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
-import ghidra.app.util.bin.format.elf.ElfHeader;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbol;
@@ -53,7 +43,6 @@ import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
-import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
@@ -154,7 +143,6 @@ public abstract class NXProgramBuilder
             
             this.setupImports(monitor);
             this.performRelocations();
-            this.markupIpc(monitor);
             
             // Set all data in the GOT to the pointer data type
             // NOTE: Currently the got range may be null in e.g. old libnx nros
@@ -427,147 +415,6 @@ public abstract class NXProgramBuilder
                 elfSymbol.setValue(externalBlockAddrOffset); // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
                 this.evaluateElfSymbol(elfSymbol, address, true);
                 externalBlockAddrOffset += undefEntrySize;
-            }
-        }
-    }
-    
-    protected void markupIpc(TaskMonitor monitor) throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
-    {
-        // Analyze and label any IPC info found
-        IPCLocator ipcAnalyzer = new IPCLocator(this.program, this.aSpace, this.nxo, monitor);
-        
-        for (IPCVTableEntry entry : ipcAnalyzer.getVTableEntries())
-        {
-            List<IPCTrace> ipcTraces = Lists.newArrayList();
-            Address processFuncAddr = ipcAnalyzer.getProcessFuncAddrFromVtEntry(entry);
-            
-            if (processFuncAddr != null)
-            {
-                Address sTableAddr = ipcAnalyzer.getSTableFromProcessFuncAddr(processFuncAddr);
-                String ipcComment = ""                +
-                        "IPC INFORMATION\n"           +
-                        "s_Table Address:       0x%X";
-                
-                if (sTableAddr != null)
-                {
-                    ipcComment = String.format(ipcComment, sTableAddr.getOffset());
-                    this.program.getListing().setComment(entry.addr, CodeUnit.PLATE_COMMENT, ipcComment);
-                }
-                
-                ipcTraces = Lists.newArrayList(ipcAnalyzer.getProcessFuncTraces(processFuncAddr).iterator());
-            }
-                
-            String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
-            
-            // Set the vtable name
-            if (!this.hasImportedSymbol(entry.addr))
-            {
-                // For shortened names, leave a comment so the user knows what the original name is
-                if (entry.fullName != entry.abvName)
-                    this.program.getListing().setComment(entry.addr, CodeUnit.REPEATABLE_COMMENT, entry.fullName);
-                
-                this.program.getSymbolTable().createLabel(entry.addr, entry.abvName, null, SourceType.IMPORTED);
-            }
-            
-            // Label the four functions that exist for all ipc vtables
-            for (int i = 0; i < 4; i++)
-            {
-                Address vtAddr = entry.addr.add(0x10 + i * 0x8);
-                String name = "";
-                
-                // Set vtable func data types to pointers
-                this.createPointer(vtAddr);
-                
-                switch (i)
-                {
-                    case 0:
-                        name = "AddReference";
-                        break;
-                        
-                    case 1:
-                        name = "Release";
-                        break;
-                        
-                    case 2:
-                        name = "GetProxyInfo";
-                        break;
-                        
-                    case 3: // Shared by everything
-                        name = "nn::sf::IServiceObject::GetInterfaceTypeInfo";
-                        break;
-                }
-                         
-                if (i == 3) // For now, only label GetInterfaceTypeInfo. We need better heuristics for the others as they may be shared.
-                {
-                    Address funcAddr = this.aSpace.getAddress(this.program.getMemory().getLong(vtAddr));
-                    
-                    if (!this.hasImportedSymbol(funcAddr))
-                        this.program.getSymbolTable().createLabel(funcAddr, name, null, SourceType.IMPORTED);
-                }
-                else
-                {
-                    this.program.getListing().setComment(vtAddr, CodeUnit.REPEATABLE_COMMENT, name);
-                }
-            }
-            
-            for (int i = 0; i < entry.ipcFuncs.size(); i++)
-            {
-                Address func = entry.ipcFuncs.get(i);
-                String name = null;
-
-                // Set vtable func data types to pointers
-                this.createPointer(entry.addr.add(0x30 + i * 0x8));
-            }
-            
-            for (IPCTrace trace : ipcTraces)
-            {
-                // Safety precaution. I *think* these should've been filtered out earlier though.
-                if (trace.vtOffset == -1 || !trace.hasDescription())
-                    continue;
-                
-                Address vtOffsetAddr = entry.addr.add(0x10 + trace.vtOffset);
-                Address ipcCmdImplAddr = this.aSpace.getAddress(this.program.getMemory().getLong(vtOffsetAddr));
-                
-                if (!this.hasImportedSymbol(ipcCmdImplAddr))
-                    this.program.getSymbolTable().createLabel(ipcCmdImplAddr, String.format("%s::Cmd%d", entryNameNoSuffix, trace.cmdId), null, SourceType.IMPORTED);
-                
-                String implComment = ""         +
-                        "IPC INFORMATION\n"       +
-                        "Bytes In:       0x%X\n"  +
-                        "Bytes Out:      0x%X\n"  +
-                        "Buffer Count:   0x%X\n"  +
-                        "In Interfaces:  0x%X\n"  +
-                        "Out Interfaces: 0x%X\n"  +
-                        "In Handles:     0x%X\n"  +
-                        "Out Handles:    0x%X";
-                
-                implComment = String.format(implComment, trace.bytesIn, trace.bytesOut, trace.bufferCount, trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles);
-                this.program.getListing().setComment(ipcCmdImplAddr, CodeUnit.PLATE_COMMENT, implComment);
-            }
-        }
-        
-        // Annotate s_Tables
-        for (Address addr : ipcAnalyzer.getSTableAddrs())
-        {
-            this.createPointer(addr);
-            
-            if (!this.hasImportedSymbol(addr))
-            {
-                Address procFuncAddr = ipcAnalyzer.getProcFuncAddrFromSTableAddr(addr);
-                String sTableName = String.format("SRV_S_TAB_%X", addr.getOffset());
-                
-                if (procFuncAddr != null)
-                {
-                    IPCVTableEntry entry = ipcAnalyzer.getIPCVTableEntryFromProcessFuncAddr(procFuncAddr);
-                    
-                    if (entry != null)
-                    {
-                        String entryNameNoSuffix = entry.abvName.replace("::vtable", "");
-                        sTableName = entryNameNoSuffix + "::s_Table";
-                    }
-                }
-                
-                this.program.getSymbolTable().createLabel(addr, sTableName, null, SourceType.IMPORTED);
             }
         }
     }
