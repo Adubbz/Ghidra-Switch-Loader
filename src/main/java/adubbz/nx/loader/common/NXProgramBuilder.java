@@ -121,12 +121,14 @@ public abstract class NXProgramBuilder
             this.memBlockHelper.addSection(".dynamic", adapter.getMOD0().getDynamicOffset(), memoryProvider.getInputStream(adapter.getMOD0().getDynamicOffset()), this.nxo.getDynamicSize(), true, true, false);
 
             // Create dynamic sections
-            this.optionallyCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
-            this.optionallyCreateDynBlock(".init_array", ElfDynamicType.DT_INIT_ARRAY, ElfDynamicType.DT_INIT_ARRAYSZ);
-            this.optionallyCreateDynBlock(".fini_array", ElfDynamicType.DT_FINI_ARRAY, ElfDynamicType.DT_FINI_ARRAYSZ);
-            this.optionallyCreateDynBlock(".rela.dyn", ElfDynamicType.DT_RELA, ElfDynamicType.DT_RELASZ);
-            this.optionallyCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
-            this.optionallyCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
+            this.tryCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
+            this.tryCreateDynBlock(".init_array", ElfDynamicType.DT_INIT_ARRAY, ElfDynamicType.DT_INIT_ARRAYSZ);
+            this.tryCreateDynBlock(".fini_array", ElfDynamicType.DT_FINI_ARRAY, ElfDynamicType.DT_FINI_ARRAYSZ);
+            this.tryCreateDynBlock(".rela.dyn", ElfDynamicType.DT_RELA, ElfDynamicType.DT_RELASZ);
+            this.tryCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
+            this.tryCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
+            this.tryCreateDynBlockWithRange(".hash", ElfDynamicType.DT_HASH, ElfDynamicType.DT_GNU_HASH);
+            this.tryCreateDynBlockWithRange(".gnu.hash", ElfDynamicType.DT_GNU_HASH, ElfDynamicType.DT_SYMTAB);
             
             this.memBlockHelper.addSection(".dynsym", this.nxo.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(this.nxo.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), this.nxo.getSymbolTable().getLength(), true, false, false);
 
@@ -667,18 +669,47 @@ public abstract class NXProgramBuilder
         return false;
     }
     
-    protected void optionallyCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType) throws NotFoundException, IOException, AddressOverflowException, AddressOutOfBoundsException
+    protected void tryCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType)
     {
-        if (this.nxo.getDynamicTable().containsDynamicValue(offsetType) && this.nxo.getDynamicTable().containsDynamicValue(sizeType))
+        try
         {
-            long offset = this.nxo.getDynamicTable().getDynamicValue(offsetType);
-            long size = this.nxo.getDynamicTable().getDynamicValue(sizeType);
-            
-            if (size > 0)
+            if (this.nxo.getDynamicTable().containsDynamicValue(offsetType) && this.nxo.getDynamicTable().containsDynamicValue(sizeType))
             {
-                Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
-                this.memBlockHelper.addSection(name, offset, this.nxo.getAdapter().getMemoryProvider().getInputStream(offset), size, true, false, false);
+                long offset = this.nxo.getDynamicTable().getDynamicValue(offsetType);
+                long size = this.nxo.getDynamicTable().getDynamicValue(sizeType);
+                
+                if (size > 0)
+                {
+                    Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
+                    this.memBlockHelper.addSection(name, offset, this.nxo.getAdapter().getMemoryProvider().getInputStream(offset), size, true, false, false);
+                }
             }
+        }
+        catch (NotFoundException | IOException | AddressOverflowException | AddressOutOfBoundsException e)
+        {
+            Msg.warn(this, String.format("Couldn't create dyn block %s. It may be absent.", name), e);
+        }
+    }
+    
+    protected void tryCreateDynBlockWithRange(String name, ElfDynamicType start, ElfDynamicType end)
+    {
+        try
+        {
+            if (this.nxo.getDynamicTable().containsDynamicValue(start) && this.nxo.getDynamicTable().containsDynamicValue(end))
+            {
+                long offset = this.nxo.getDynamicTable().getDynamicValue(start);
+                long size = this.nxo.getDynamicTable().getDynamicValue(end) - offset;
+                
+                if (size > 0)
+                {
+                    Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
+                    this.memBlockHelper.addSection(name, offset, this.nxo.getAdapter().getMemoryProvider().getInputStream(offset), size, true, false, false);
+                }
+            }
+        }
+        catch (NotFoundException | IOException | AddressOverflowException | AddressOutOfBoundsException e)
+        {
+            Msg.warn(this, String.format("Couldn't create dyn block %s. It may be absent.", name), e);
         }
     }
     
