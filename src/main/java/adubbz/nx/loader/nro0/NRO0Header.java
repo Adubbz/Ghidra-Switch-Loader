@@ -8,7 +8,7 @@ package adubbz.nx.loader.nro0;
 
 import java.io.IOException;
 
-import adubbz.nx.loader.common.InvalidMagicException;
+import adubbz.nx.common.InvalidMagicException;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;

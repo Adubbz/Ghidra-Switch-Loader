@@ -18,19 +18,25 @@ import org.apache.commons.compress.utils.Lists;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Longs;
 
-import adubbz.nx.loader.ipc.IPCAnalyzer;
-import adubbz.nx.loader.ipc.IPCTrace;
-import adubbz.nx.loader.ipc.IPCAnalyzer.IPCVTableEntry;
+import adubbz.nx.analyzer.ipc.IPCLocator;
+import adubbz.nx.analyzer.ipc.IPCTrace;
+import adubbz.nx.analyzer.ipc.IPCLocator.IPCVTableEntry;
+import adubbz.nx.common.ElfCompatibilityProvider;
+import adubbz.nx.common.NXRelocation;
 import adubbz.nx.loader.nxo.NXOAdapter;
 import adubbz.nx.loader.nxo.NXOHeader;
 import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import adubbz.nx.util.UIUtil;
+import generic.continues.RethrowContinuesFactory;
 import ghidra.app.cmd.label.SetLabelPrimaryCmd;
 import ghidra.app.util.MemoryBlockUtil;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
+import ghidra.app.util.bin.format.elf.ElfDynamic;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
+import ghidra.app.util.bin.format.elf.ElfHeader;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbol;
@@ -87,7 +93,7 @@ public abstract class NXProgramBuilder
     {
         this.program = program;
         this.fileByteProvider = provider;
-        this.nxo = new NXOHeader(adapter, 0x7100000000L);
+        this.nxo = new NXOHeader(program, adapter, 0x7100000000L);
         this.mbu = new MemoryBlockUtil(program, handler);
     }
     
@@ -123,7 +129,7 @@ public abstract class NXProgramBuilder
                 return;
             }
             
-            this.memBlockHelper.addSection(".dynamic", adapter.getMOD0().getDynamicOffset(), memoryProvider.getInputStream(adapter.getMOD0().getDynamicOffset()), this.nxo.getDynamicTable().getLength(), true, true, false);
+            this.memBlockHelper.addSection(".dynamic", adapter.getMOD0().getDynamicOffset(), memoryProvider.getInputStream(adapter.getMOD0().getDynamicOffset()), this.nxo.getDynamicSize(), true, true, false);
 
             // Create dynamic sections
             this.optionallyCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
@@ -133,7 +139,7 @@ public abstract class NXProgramBuilder
             this.optionallyCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
             this.optionallyCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
             
-            this.memBlockHelper.addSection(".dynsym", this.nxo.getSymbolTable().getFileOffset(), memoryProvider.getInputStream(this.nxo.getSymbolTable().getFileOffset()), this.nxo.getSymbolTable().getLength(), true, false, false);
+            this.memBlockHelper.addSection(".dynsym", this.nxo.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(this.nxo.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), this.nxo.getSymbolTable().getLength(), true, false, false);
 
             this.setupStringTable();
             this.setupSymbolTable();
@@ -428,7 +434,7 @@ public abstract class NXProgramBuilder
     protected void markupIpc(TaskMonitor monitor) throws InvalidInputException, CodeUnitInsertionException, DataTypeConflictException, AddressOutOfBoundsException, MemoryAccessException
     {
         // Analyze and label any IPC info found
-        IPCAnalyzer ipcAnalyzer = new IPCAnalyzer(this.program, this.aSpace, this.nxo, monitor);
+        IPCLocator ipcAnalyzer = new IPCLocator(this.program, this.aSpace, this.nxo, monitor);
         
         for (IPCVTableEntry entry : ipcAnalyzer.getVTableEntries())
         {
