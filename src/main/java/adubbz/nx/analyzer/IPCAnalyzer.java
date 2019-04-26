@@ -792,7 +792,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
     {
         Data d = program.getListing().getDataAt(address);
         
-        if (d == null || !PointerDataType.dataType.isEquivalent(d.getDataType())) 
+        if (d == null) 
         {
             try 
             {
