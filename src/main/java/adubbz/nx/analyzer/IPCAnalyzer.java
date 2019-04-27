@@ -23,6 +23,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multimap;
 
+import adubbz.nx.loader.SwitchLoader;
 import adubbz.nx.analyzer.ipc.IPCEmulator;
 import adubbz.nx.analyzer.ipc.IPCTrace;
 import adubbz.nx.common.ElfCompatibilityProvider;
@@ -75,7 +76,9 @@ public class IPCAnalyzer extends AbstractAnalyzer
     public boolean canAnalyze(Program program) 
     {
         // TODO: Better checking here
-        return true;
+        if (program.getLanguage().getLanguageID() == SwitchLoader.LANG_ID)
+            return true;
+        return false;
     }
 
     @Override
