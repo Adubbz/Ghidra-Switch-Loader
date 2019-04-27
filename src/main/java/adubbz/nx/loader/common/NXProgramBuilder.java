@@ -74,7 +74,6 @@ public abstract class NXProgramBuilder
     protected MemoryBlockHelper memBlockHelper;
     
     protected List<PltEntry> pltEntries = new ArrayList<>();
-    protected AddressRange gotRange;
     
     protected int undefSymbolCount;
     
@@ -111,14 +110,14 @@ public abstract class NXProgramBuilder
             this.memBlockHelper.addDeferredSection(".rodata", rodata.getOffset(), rodataInputStream, rodata.getSize(), true, false, false);
             this.memBlockHelper.addDeferredSection(".data", data.getOffset(), dataInputStream, data.getSize(), true, true, false);
             
-            if (adapter.getMOD0() == null)
+            if (adapter.getDynamicSize() == 0)
             {
                 // We can't create .dynamic, so work with what we've got.
                 this.memBlockHelper.finalizeSections();
                 return;
             }
             
-            this.memBlockHelper.addSection(".dynamic", adapter.getMOD0().getDynamicOffset(), memoryProvider.getInputStream(adapter.getMOD0().getDynamicOffset()), this.nxo.getDynamicSize(), true, true, false);
+            this.memBlockHelper.addSection(".dynamic", adapter.getDynamicOffset(), memoryProvider.getInputStream(adapter.getDynamicOffset()), adapter.getDynamicSize(), true, true, false);
 
             // Create dynamic sections
             this.tryCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
@@ -130,7 +129,7 @@ public abstract class NXProgramBuilder
             this.tryCreateDynBlockWithRange(".hash", ElfDynamicType.DT_HASH, ElfDynamicType.DT_GNU_HASH);
             this.tryCreateDynBlockWithRange(".gnu.hash", ElfDynamicType.DT_GNU_HASH, ElfDynamicType.DT_SYMTAB);
             
-            this.memBlockHelper.addSection(".dynsym", this.nxo.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(this.nxo.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), this.nxo.getSymbolTable().getLength(), true, false, false);
+            this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), adapter.getSymbolTable().getLength(), true, false, false);
 
             this.setupStringTable();
             this.setupSymbolTable();
@@ -139,9 +138,9 @@ public abstract class NXProgramBuilder
             this.memBlockHelper.finalizeSections();
             
             // Create BSS. This needs to be done before the EXTERNAL block is created in setupImports
-            Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getBssStartOffset());
-            Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + adapter.getMOD0().getBssSize()));
-            this.mbu.createUninitializedBlock(false, ".bss", bssStartAddr, adapter.getMOD0().getBssSize(), "", null, true, true, false);
+            Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getBssOffset());
+            Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + adapter.getBssSize()));
+            this.mbu.createUninitializedBlock(false, ".bss", bssStartAddr, adapter.getBssSize(), "", null, true, true, false);
             
             this.setupImports(monitor);
             this.performRelocations();
@@ -149,9 +148,9 @@ public abstract class NXProgramBuilder
             // Set all data in the GOT to the pointer data type
             // NOTE: Currently the got range may be null in e.g. old libnx nros
             // We may want to manually figure this out ourselves in future.
-            if (this.gotRange != null)
+            if (adapter.getGotSize() > 0)
             {
-                for (Address addr = this.gotRange.getMinAddress(); addr.compareTo(this.gotRange.getMaxAddress()) < 0; addr = addr.add(0x8))
+                for (Address addr = this.aSpace.getAddress(adapter.getGotOffset()); addr.compareTo(this.aSpace.getAddress(adapter.getGotOffset() + adapter.getGotSize())) < 0; addr = addr.add(0x8))
                 {
                     this.createPointer(addr);
                 }
@@ -169,7 +168,8 @@ public abstract class NXProgramBuilder
     
     protected void setupStringTable() throws AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException
     {
-       ElfStringTable stringTable = this.nxo.getStringTable();
+       NXOAdapter adapter = this.nxo.getAdapter();
+       ElfStringTable stringTable = adapter.getStringTable();
        long stringTableAddrOffset = stringTable.getAddressOffset();
         
         Address address = this.aSpace.getAddress(stringTableAddrOffset);
@@ -184,7 +184,9 @@ public abstract class NXProgramBuilder
     
     protected void setupSymbolTable()
     {
-        for (ElfSymbol elfSymbol : this.nxo.getSymbolTable().getSymbols()) 
+        NXOAdapter adapter = this.nxo.getAdapter();
+        
+        for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols()) 
         {
             String symName = elfSymbol.getNameAsString();
 
@@ -206,7 +208,7 @@ public abstract class NXProgramBuilder
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
         BinaryReader memoryReader = adapter.getMemoryReader();
-        ImmutableList<NXRelocation> pltRelocs = this.nxo.getPltRelocations();
+        ImmutableList<NXRelocation> pltRelocs = adapter.getPltRelocations();
         
         if (pltRelocs.isEmpty())
         {
@@ -217,10 +219,10 @@ public abstract class NXProgramBuilder
         long pltGotStart = pltRelocs.get(0).offset;
         long pltGotEnd = pltRelocs.get(pltRelocs.size() - 1).offset + 8;
         
-        if (this.nxo.getDynamicTable().containsDynamicValue(ElfDynamicType.DT_PLTGOT))
+        if (adapter.getDynamicTable().containsDynamicValue(ElfDynamicType.DT_PLTGOT))
         {
-            long pltGotOff = this.nxo.getDynamicTable().getDynamicValue(ElfDynamicType.DT_PLTGOT);
-            this.memBlockHelper.addSection(".got.plt", pltGotOff, memoryProvider.getInputStream(pltGotOff), pltGotEnd - pltGotStart, true, false, false);
+            long pltGotOff = adapter.getDynamicTable().getDynamicValue(ElfDynamicType.DT_PLTGOT);
+            this.memBlockHelper.addSection(".got.plt", pltGotOff, memoryProvider.getInputStream(pltGotOff), pltGotEnd - pltGotOff, true, false, false);
         }
         
         int last = 12;
@@ -264,38 +266,6 @@ public abstract class NXProgramBuilder
         long pltStart = this.pltEntries.get(0).off;
         long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
         this.memBlockHelper.addSection(".plt", pltStart, memoryProvider.getInputStream(pltStart), pltEnd - pltStart, true, false, false);
-        
-        long gotStart = 0;
-        long gotEnd = 0;
-        
-        boolean good = false;
-        gotEnd = pltGotEnd + 8;
-        
-        while (!this.nxo.getDynamicTable().containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY) || gotEnd < this.nxo.getDynamicTable().getDynamicValue(ElfDynamicType.DT_INIT_ARRAY))
-        {
-            boolean foundOffset = false;
-            
-            for (NXRelocation reloc : this.nxo.getRelocations())
-            {
-                if (reloc.offset == gotEnd)
-                {
-                    foundOffset = true;
-                    break;
-                }
-            }
-            
-            if (!foundOffset)
-                break;
-            
-            good = true;
-            gotEnd += 8;
-        }
-        
-        if (good)
-        {
-            gotStart = pltGotEnd;
-            this.gotRange = new AddressRangeImpl(this.aSpace.getAddress(this.nxo.getBaseAddress() + gotStart), this.aSpace.getAddress(this.nxo.getBaseAddress() + gotEnd));
-        }
     }
     
     protected void createGlobalOffsetTable() throws AddressOverflowException, AddressOutOfBoundsException, IOException
@@ -303,28 +273,21 @@ public abstract class NXProgramBuilder
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
         
-        if (adapter.getMOD0().hasLibnxExtension())
-        {
-            this.gotRange = new AddressRangeImpl(this.aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getLibnxGotStart()), this.aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getMOD0().getLibnxGotEnd()));
-        }
+        // .got.plt needs to have been created first
+        long gotStartOff = adapter.getGotOffset() - this.nxo.getBaseAddress();
+        long gotSize = adapter.getGotSize();
         
-        if (this.gotRange != null)
-        {
-            long gotStartOff = this.gotRange.getMinAddress().getOffset() - this.nxo.getBaseAddress();
-            long gotEndOff = this.gotRange.getMaxAddress().getOffset() - this.nxo.getBaseAddress();
-            long gotSize = gotEndOff - gotStartOff;
-            
-            Msg.info(this, String.format("Created got from 0x%X to 0x%X", this.gotRange.getMinAddress().getOffset(), this.gotRange.getMaxAddress().getOffset()));
-            this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
-        }
+        Msg.info(this, String.format("Created got from 0x%X to 0x%X", gotStartOff, gotStartOff + gotSize));
+        this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
     }
     
     protected void performRelocations() throws MemoryAccessException, InvalidInputException, AddressOutOfBoundsException
     {
+        NXOAdapter adapter = this.nxo.getAdapter();
         Map<Long, String> gotNameLookup = new HashMap<>(); 
         
         // Relocations again
-        for (NXRelocation reloc : this.nxo.getRelocations()) 
+        for (NXRelocation reloc : adapter.getRelocations()) 
         {
             Address target = this.aSpace.getAddress(reloc.offset + this.nxo.getBaseAddress());
             long originalValue = this.program.getMemory().getLong(target);
@@ -386,6 +349,7 @@ public abstract class NXProgramBuilder
     
     protected void setupImports(TaskMonitor monitor)
     {
+        NXOAdapter adapter = this.nxo.getAdapter();
         this.processImports(monitor);
         
         if (this.undefSymbolCount == 0)
@@ -407,7 +371,7 @@ public abstract class NXProgramBuilder
         this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
         
         // Handle imported symbols
-        for (ElfSymbol elfSymbol : this.nxo.getSymbolTable().getSymbols())
+        for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols())
         {
             String symName = elfSymbol.getNameAsString();
             
@@ -440,13 +404,15 @@ public abstract class NXProgramBuilder
     
     private void processImports(TaskMonitor monitor) 
     {
+        NXOAdapter adapter = this.nxo.getAdapter();
+        
         if (monitor.isCancelled())
             return;
 
         monitor.setMessage("Processing imports...");
 
         ExternalManager extManager = program.getExternalManager();
-        String[] neededLibs = this.nxo.getDynamicLibraryNames();
+        String[] neededLibs = adapter.getDynamicLibraryNames();
         
         for (String neededLib : neededLibs) 
         {
@@ -671,12 +637,14 @@ public abstract class NXProgramBuilder
     
     protected void tryCreateDynBlock(String name, ElfDynamicType offsetType, ElfDynamicType sizeType)
     {
+        NXOAdapter adapter = this.nxo.getAdapter();
+        
         try
         {
-            if (this.nxo.getDynamicTable().containsDynamicValue(offsetType) && this.nxo.getDynamicTable().containsDynamicValue(sizeType))
+            if (adapter.getDynamicTable().containsDynamicValue(offsetType) && adapter.getDynamicTable().containsDynamicValue(sizeType))
             {
-                long offset = this.nxo.getDynamicTable().getDynamicValue(offsetType);
-                long size = this.nxo.getDynamicTable().getDynamicValue(sizeType);
+                long offset = adapter.getDynamicTable().getDynamicValue(offsetType);
+                long size = adapter.getDynamicTable().getDynamicValue(sizeType);
                 
                 if (size > 0)
                 {
@@ -693,12 +661,14 @@ public abstract class NXProgramBuilder
     
     protected void tryCreateDynBlockWithRange(String name, ElfDynamicType start, ElfDynamicType end)
     {
+        NXOAdapter adapter = this.nxo.getAdapter();
+        
         try
         {
-            if (this.nxo.getDynamicTable().containsDynamicValue(start) && this.nxo.getDynamicTable().containsDynamicValue(end))
+            if (adapter.getDynamicTable().containsDynamicValue(start) && adapter.getDynamicTable().containsDynamicValue(end))
             {
-                long offset = this.nxo.getDynamicTable().getDynamicValue(start);
-                long size = this.nxo.getDynamicTable().getDynamicValue(end) - offset;
+                long offset = adapter.getDynamicTable().getDynamicValue(start);
+                long size = adapter.getDynamicTable().getDynamicValue(end) - offset;
                 
                 if (size > 0)
                 {

@@ -8,6 +8,7 @@ package adubbz.nx.loader.kip1;
 
 import java.io.IOException;
 
+import adubbz.nx.loader.nxo.MOD0Adapter;
 import adubbz.nx.loader.nxo.NXOAdapter;
 import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
@@ -15,9 +16,10 @@ import adubbz.nx.util.ByteUtil;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
-public class KIP1Adapter extends NXOAdapter
+public class KIP1Adapter extends MOD0Adapter
 {
     protected ByteProvider fileProvider;
     protected BinaryReader fileReader;
@@ -26,8 +28,10 @@ public class KIP1Adapter extends NXOAdapter
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
     
-    public KIP1Adapter(ByteProvider fileProvider)
+    public KIP1Adapter(Program program, ByteProvider fileProvider)
     {
+        super(program);
+        
         this.fileProvider = fileProvider;
         this.fileReader = new BinaryReader(this.fileProvider, true);
         

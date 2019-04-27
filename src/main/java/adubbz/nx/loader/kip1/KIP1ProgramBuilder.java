@@ -17,7 +17,7 @@ public class KIP1ProgramBuilder extends NXProgramBuilder
 {
     protected KIP1ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
-        super(program, provider, new KIP1Adapter(provider), handler);
+        super(program, provider, new KIP1Adapter(program, provider), handler);
     }
     
     public static void loadKIP1(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)

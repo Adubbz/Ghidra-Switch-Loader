@@ -8,9 +8,17 @@ package adubbz.nx.loader.nxo;
 
 import java.io.IOException;
 
-import adubbz.nx.common.InvalidMagicException;
+import com.google.common.collect.ImmutableList;
+
+import adubbz.nx.common.ElfCompatibilityProvider;
+import adubbz.nx.common.NXRelocation;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.app.util.bin.ByteProviderWrapper;
+import ghidra.app.util.bin.format.elf.ElfDynamicTable;
+import ghidra.app.util.bin.format.elf.ElfStringTable;
+import ghidra.app.util.bin.format.elf.ElfSymbolTable;
+import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
 /**
@@ -18,8 +26,16 @@ import ghidra.util.Msg;
  */
 public abstract class NXOAdapter 
 {
+    protected Program program;
     protected BinaryReader memoryReader;
-    protected MOD0Header mod0;
+    protected ElfCompatibilityProvider elfProvider;
+    
+    public NXOAdapter(Program program)
+    {
+        this.program = program;
+    }
+    
+    public abstract ByteProvider getMemoryProvider();
     
     public BinaryReader getMemoryReader()
     {
@@ -30,33 +46,65 @@ public abstract class NXOAdapter
         return this.memoryReader;
     }
     
-    public MOD0Header getMOD0()
+    public abstract long getDynamicOffset();
+    public abstract long getDynamicSize();
+    
+    public abstract long getBssOffset();
+    public abstract long getBssSize();
+    
+    public abstract long getGotOffset();
+    public abstract long getGotSize();
+    
+    public ElfDynamicTable getDynamicTable()
     {
-        if (this.mod0 != null)
-            return this.mod0;
+        return this.getElfProvider().getDynamicTable();
+    }
+    
+    public ElfStringTable getStringTable()
+    {
+        return this.getElfProvider().getStringTable();
+    }
+    
+    public ElfSymbolTable getSymbolTable()
+    {
+        return this.getElfProvider().getSymbolTable();
+    }
+    
+    public String[] getDynamicLibraryNames() 
+    {
+        return this.getElfProvider().getDynamicLibraryNames();
+    }
+    
+    public ImmutableList<NXRelocation> getRelocations()
+    {
+        return ImmutableList.copyOf(this.getElfProvider().getRelocations());
+    }
+    
+    public ImmutableList<NXRelocation> getPltRelocations()
+    {
+        return ImmutableList.copyOf(this.getElfProvider().getPltRelocations());
+    }
+    
+    public ElfCompatibilityProvider getElfProvider()
+    {
+        if (this.elfProvider != null)
+            return this.elfProvider;
+        
+        long baseAddress = this.program.getImageBase().getOffset();
+        long memoryProviderLength = 0x0;
         
         try 
         {
-            int mod0Offset = this.getMemoryReader().readInt(this.getSection(NXOSectionType.TEXT).getOffset() + 4);
-        
-            if (Integer.toUnsignedLong(mod0Offset) >= this.getMemoryProvider().length())
-                throw new IllegalArgumentException("Mod0 offset is outside the binary!");
-            
-            this.mod0 = new MOD0Header(this.getMemoryReader(), mod0Offset, mod0Offset);
-            return this.mod0;
-        }
-        catch (InvalidMagicException e)
-        {
-            Msg.error(this, "Invalid MOD0 magic.");
-            e.printStackTrace();
-        }
+            memoryProviderLength = this.getMemoryProvider().length();
+        } 
         catch (IOException e) 
         {
-            Msg.error(this, "Failed to read MOD0.");
-            e.printStackTrace();
+            Msg.error(this, "Failed to get memory provider length", e);
         }
         
-        return null;
+        this.elfProvider = new ElfCompatibilityProvider(program, new ByteProviderWrapper(this.getMemoryProvider(), -baseAddress, memoryProviderLength));
+        
+        return this.elfProvider;
     }
     
     public NXOSection getSection(NXOSectionType type)
@@ -64,6 +112,5 @@ public abstract class NXOAdapter
         return this.getSections()[type.ordinal()];
     }
     
-    public abstract ByteProvider getMemoryProvider();
     public abstract NXOSection[] getSections();
 }

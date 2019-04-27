@@ -8,15 +8,17 @@ package adubbz.nx.loader.nro0;
 
 import java.io.IOException;
 
+import adubbz.nx.loader.nxo.MOD0Adapter;
 import adubbz.nx.loader.nxo.NXOAdapter;
 import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
-public class NRO0Adapter extends NXOAdapter
+public class NRO0Adapter extends MOD0Adapter
 {
     protected ByteProvider fileProvider;
     protected BinaryReader fileReader;
@@ -25,8 +27,10 @@ public class NRO0Adapter extends NXOAdapter
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
     
-    public NRO0Adapter(ByteProvider fileProvider)
+    public NRO0Adapter(Program program, ByteProvider fileProvider)
     {
+        super(program);
+        
         this.fileProvider = fileProvider;
         this.fileReader = new BinaryReader(this.fileProvider, true);
         

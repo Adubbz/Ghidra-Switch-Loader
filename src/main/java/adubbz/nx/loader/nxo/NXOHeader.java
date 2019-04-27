@@ -43,25 +43,12 @@ import ghidra.util.exception.NotFoundException;
 public class NXOHeader 
 {
     private NXOAdapter adapter;
-    private ElfCompatibilityProvider elfCompatProvider;
     
     protected final long baseAddress;
     public NXOHeader(Program program, NXOAdapter adapter, long baseAddress)
     {
         this.adapter = adapter;
         this.baseAddress = baseAddress;
-        long memoryProviderLength = 0x0;
-        
-        try 
-        {
-            memoryProviderLength = adapter.getMemoryProvider().length();
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to get memory provider length", e);
-        }
-        
-        this.elfCompatProvider = new ElfCompatibilityProvider(program, new ByteProviderWrapper(adapter.getMemoryProvider(), -baseAddress, memoryProviderLength));
     }
     
     public NXOAdapter getAdapter()
@@ -73,65 +60,4 @@ public class NXOHeader
     {
         return this.baseAddress;
     }
-    
-    public long getDynamicSize()
-    {
-        if (this.getDynamicTable() != null)
-            return this.getDynamicTable().getLength();
-        
-        long dtSize = 0;
-        var factoryReader = new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.adapter.getMemoryProvider(), true);
-        factoryReader.setPointerIndex(this.adapter.getMOD0().getDynamicOffset());
-        
-        try
-        {
-            while (true) 
-            {
-                ElfDynamic dyn = ElfDynamic.createElfDynamic(factoryReader, new ElfCompatibilityProvider.DummyElfHeader());
-                dtSize += 16; // 64 bit
-                if (dyn.getTag() == ElfDynamicType.DT_NULL.value) 
-                {
-                    break;
-                }
-            }
-        }
-        catch (IOException e)
-        {
-            Msg.error(this, "Failed to get dynamic size", e);
-        }
-        
-        return dtSize;
-    }
-    
-    public ElfDynamicTable getDynamicTable()
-    {
-        return this.elfCompatProvider.getDynamicTable();
-    }
-    
-    public ElfStringTable getStringTable()
-    {
-        return this.elfCompatProvider.getStringTable();
-    }
-    
-    public ElfSymbolTable getSymbolTable()
-    {
-        return this.elfCompatProvider.getSymbolTable();
-    }
-    
-    public String[] getDynamicLibraryNames() 
-    {
-        return this.elfCompatProvider.getDynamicLibraryNames();
-    }
-    
-    public ImmutableList<NXRelocation> getRelocations()
-    {
-        return ImmutableList.copyOf(this.elfCompatProvider.getRelocations());
-    }
-    
-    public ImmutableList<NXRelocation> getPltRelocations()
-    {
-        return ImmutableList.copyOf(this.elfCompatProvider.getPltRelocations());
-    }
-    
-
 }

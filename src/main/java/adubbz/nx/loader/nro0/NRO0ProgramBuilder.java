@@ -17,7 +17,7 @@ public class NRO0ProgramBuilder extends NXProgramBuilder
 {
     protected NRO0ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
-        super(program, provider, new NRO0Adapter(provider), handler);
+        super(program, provider, new NRO0Adapter(program, provider), handler);
     }
     
     public static void loadNRO0(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)

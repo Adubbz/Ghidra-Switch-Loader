@@ -16,7 +16,7 @@ public class NSO0ProgramBuilder extends NXProgramBuilder
 {
     protected NSO0ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
     {
-        super(program, provider, new NSO0Adapter(provider), handler);
+        super(program, provider, new NSO0Adapter(program, provider), handler);
     }
     
     public static void loadNSO0(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
