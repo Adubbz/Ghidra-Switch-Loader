@@ -81,7 +81,7 @@ public abstract class NXProgramBuilder
     {
         this.program = program;
         this.fileByteProvider = provider;
-        this.nxo = new NXOHeader(program, adapter, 0x7100000000L);
+        this.nxo = new NXOHeader(program, adapter, program.getImageBase().getOffset());
         this.mbu = new MemoryBlockUtil(program, handler);
     }
     
@@ -93,8 +93,6 @@ public abstract class NXProgramBuilder
         
         try 
         {
-            // Set the base address
-            this.program.setImageBase(aSpace.getAddress(this.nxo.getBaseAddress()), true);
             this.memBlockHelper = new MemoryBlockHelper(monitor, this.program, memoryProvider, this.mbu, this.nxo.getBaseAddress());
             
             NXOSection text = adapter.getSection(NXOSectionType.TEXT);

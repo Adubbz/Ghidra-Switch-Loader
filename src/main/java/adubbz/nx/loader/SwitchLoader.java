@@ -40,6 +40,7 @@ import ghidra.program.model.lang.Language;
 import ghidra.program.model.lang.LanguageCompilerSpecPair;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.Program;
+import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
@@ -126,6 +127,8 @@ public class SwitchLoader extends BinaryLoader
             MessageLog messageLog, Program program, TaskMonitor monitor, MemoryConflictHandler memoryConflictHandler) 
                     throws IOException
     {
+        var space = program.getAddressFactory().getDefaultAddressSpace();
+        
         if (this.binaryType == BinaryType.SX_KIP1)
         {
             ByteProvider offsetProvider = new ByteProviderWrapper(provider, 0x10, provider.length() - 0x10);
@@ -133,6 +136,17 @@ public class SwitchLoader extends BinaryLoader
         }
         else
         {
+            
+            // Set the base address
+            try 
+            {
+                program.setImageBase(space.getAddress(0x7100000000L), true);
+            } 
+            catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException e) 
+            {
+                Msg.error(this, "Failed to set image base");
+            }
+            
             if (this.binaryType == BinaryType.KIP1)
             {
                 KIP1ProgramBuilder.loadKIP1(provider, program, memoryConflictHandler, monitor);
@@ -148,6 +162,15 @@ public class SwitchLoader extends BinaryLoader
             }
             else if (this.binaryType == BinaryType.KERNEL_800)
             {
+                try 
+                {
+                    program.setImageBase(space.getAddress(0x80060000L), true);
+                } 
+                catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException e) 
+                {
+                    Msg.error(this, "Failed to set image base");
+                }
+                
                 KNXProgramBuilder.loadKNX(provider, program, memoryConflictHandler, monitor);
             }
         }
