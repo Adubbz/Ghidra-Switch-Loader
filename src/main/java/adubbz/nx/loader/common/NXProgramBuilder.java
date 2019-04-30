@@ -277,8 +277,11 @@ public abstract class NXProgramBuilder
         long gotStartOff = adapter.getGotOffset() - this.nxo.getBaseAddress();
         long gotSize = adapter.getGotSize();
         
-        Msg.info(this, String.format("Created got from 0x%X to 0x%X", gotStartOff, gotStartOff + gotSize));
-        this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
+        if (gotSize > 0)
+        {
+            Msg.info(this, String.format("Created got from 0x%X to 0x%X", gotStartOff, gotStartOff + gotSize));
+            this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
+        }
     }
     
     protected void performRelocations() throws MemoryAccessException, InvalidInputException, AddressOutOfBoundsException

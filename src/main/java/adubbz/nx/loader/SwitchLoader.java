@@ -14,6 +14,7 @@ import java.util.List;
 
 import adubbz.nx.loader.kip1.KIP1Header;
 import adubbz.nx.loader.kip1.KIP1ProgramBuilder;
+import adubbz.nx.loader.knx.KNXProgramBuilder;
 import adubbz.nx.loader.nro0.NRO0Header;
 import adubbz.nx.loader.nro0.NRO0ProgramBuilder;
 import adubbz.nx.loader.nso0.NSO0Header;
@@ -65,6 +66,10 @@ public class SwitchLoader extends BinaryLoader
         else if (magic_0x0.equals("NSO0"))
         {
             this.binaryType = BinaryType.NSO0;
+        }
+        else if (magic_0x0.equals("\u00DF\u004F\u0003\u00D5"))
+        {
+            this.binaryType = BinaryType.KERNEL_800;
         }
         else if (magic_0x10.equals("NRO0"))
         {
@@ -139,7 +144,11 @@ public class SwitchLoader extends BinaryLoader
             }
             else if (this.binaryType == BinaryType.NRO0)
             {
-                NRO0ProgramBuilder.loadNRO0( provider, program, memoryConflictHandler, monitor);
+                NRO0ProgramBuilder.loadNRO0(provider, program, memoryConflictHandler, monitor);
+            }
+            else if (this.binaryType == BinaryType.KERNEL_800)
+            {
+                KNXProgramBuilder.loadKNX(provider, program, memoryConflictHandler, monitor);
             }
         }
         
@@ -169,7 +178,8 @@ public class SwitchLoader extends BinaryLoader
         KIP1("Kernel Initial Process"), 
         NSO0("Nintendo Shared Object"), 
         NRO0("Nintendo Relocatable Object"),
-        SX_KIP1("Gateway Kernel Initial Process");
+        SX_KIP1("Gateway Kernel Initial Process"),
+        KERNEL_800("Nintendo Switch Kernel 8.0.0+");
         
         public final String name;
         

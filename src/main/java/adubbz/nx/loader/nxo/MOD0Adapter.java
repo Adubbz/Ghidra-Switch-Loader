@@ -53,7 +53,7 @@ public abstract class MOD0Adapter extends NXOAdapter
         
         long dtSize = 0;
         var factoryReader = new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.getMemoryProvider(), true);
-        factoryReader.setPointerIndex(this.getMOD0().getDynamicOffset());
+        factoryReader.setPointerIndex(this.getDynamicOffset());
         
         try
         {
