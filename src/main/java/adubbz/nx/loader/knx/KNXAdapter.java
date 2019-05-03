@@ -139,64 +139,29 @@ public class KNXAdapter extends MOD0Adapter
     @Override
     public long getGotOffset()
     {
-        MemoryBlock gotPlt = this.program.getMemory().getBlock(".got.plt");
+        ElfDynamicTable dt = this.getDynamicTable();
         
-        if (gotPlt == null)
+        if (dt == null)
             return 0;
         
-        return gotPlt.getEnd().getOffset() + 1;
+        return dt.getAddressOffset() + dt.getLength();
     }
-    
-    private long gotSize = 0;
     
     @Override
     public long getGotSize()
     {
-        if (this.gotSize > 0)
-            return this.gotSize;
-        
         ElfDynamicTable dt = this.getDynamicTable();
-        long baseAddr = this.program.getImageBase().getOffset();
-        long gotEnd = this.getGotOffset() + 8;
-        boolean good = false;
         
-        if (dt == null || gotEnd == 8)
+        if (dt == null || !dt.containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY))
             return 0;
         
         try 
         {
-            while (!dt.containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY) || gotEnd < (baseAddr + dt.getDynamicValue(ElfDynamicType.DT_INIT_ARRAY)))
-            {
-                boolean foundOffset = false;
-                
-                for (NXRelocation reloc : this.getRelocations())
-                {
-                    if ((baseAddr + reloc.offset) == gotEnd)
-                    {
-                        foundOffset = true;
-                        break;
-                    }
-                }
-                
-                if (!foundOffset)
-                    break;
-                
-                good = true;
-                gotEnd += 8;
-            }
+            return this.program.getImageBase().getOffset() + dt.getDynamicValue(ElfDynamicType.DT_INIT_ARRAY) - this.getGotOffset();
         } 
         catch (NotFoundException e) 
         {
-            Msg.error(this, "Failed to get got size", e);
             return 0;
         }
-        
-        if (good)
-        {
-            this.gotSize = gotEnd - this.getGotOffset();
-            return this.gotSize;
-        }
-        
-        return 0;
     }
 }
