@@ -107,7 +107,7 @@ public abstract class MOD0Adapter extends NXOAdapter
         
         if (mod0.hasLibnxExtension())
         {
-            return mod0.getLibnxGotStart();
+            return mod0.getLibnxGotStart() + this.program.getImageBase().getOffset();
         }
         
         MemoryBlock gotPlt = this.program.getMemory().getBlock(".got.plt");
