@@ -76,8 +76,8 @@ public class IPCAnalyzer extends AbstractAnalyzer
     public boolean canAnalyze(Program program) 
     {
         // TODO: Better checking here
-        if (program.getLanguage().getLanguageID() == SwitchLoader.LANG_ID)
-            return true;
+        if (program.getName().endsWith(".kip1"))
+                return true;
         return false;
     }
 
