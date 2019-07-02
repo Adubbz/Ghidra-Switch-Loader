@@ -127,8 +127,11 @@ public abstract class NXProgramBuilder
             this.tryCreateDynBlockWithRange(".hash", ElfDynamicType.DT_HASH, ElfDynamicType.DT_GNU_HASH);
             this.tryCreateDynBlockWithRange(".gnu.hash", ElfDynamicType.DT_GNU_HASH, ElfDynamicType.DT_SYMTAB);
             
-            this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), adapter.getSymbolTable().getLength(), true, false, false);
-
+            if (adapter.getSymbolTable() != null)
+            {
+                this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), adapter.getSymbolTable().getLength(), true, false, false);
+            }
+            
             this.setupStringTable();
             this.setupSymbolTable();
             this.setupRelocations();
@@ -168,6 +171,10 @@ public abstract class NXProgramBuilder
     {
        NXOAdapter adapter = this.nxo.getAdapter();
        ElfStringTable stringTable = adapter.getStringTable();
+       
+       if (stringTable == null)
+           return;
+       
        long stringTableAddrOffset = stringTable.getAddressOffset();
         
         Address address = this.aSpace.getAddress(stringTableAddrOffset);
@@ -184,19 +191,22 @@ public abstract class NXProgramBuilder
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         
-        for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols()) 
+        if (adapter.getSymbolTable() != null)
         {
-            String symName = elfSymbol.getNameAsString();
-
-            if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
+            for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols()) 
             {
-                // NOTE: We handle adding these symbols later
-                this.undefSymbolCount++;
-            }
-            else
-            {
-                Address address = this.aSpace.getAddress(this.nxo.getBaseAddress() + elfSymbol.getValue());
-                this.evaluateElfSymbol(elfSymbol, address, false);
+                String symName = elfSymbol.getNameAsString();
+    
+                if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
+                {
+                    // NOTE: We handle adding these symbols later
+                    this.undefSymbolCount++;
+                }
+                else
+                {
+                    Address address = this.aSpace.getAddress(this.nxo.getBaseAddress() + elfSymbol.getValue());
+                    this.evaluateElfSymbol(elfSymbol, address, false);
+                }
             }
         }
     }
@@ -370,18 +380,21 @@ public abstract class NXProgramBuilder
         
         // Create the block where imports will be located
         this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
-        
+
         // Handle imported symbols
-        for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols())
+        if (adapter.getSymbolTable() != null)
         {
-            String symName = elfSymbol.getNameAsString();
-            
-            if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
+            for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols())
             {
-                Address address = this.aSpace.getAddress(externalBlockAddrOffset);
-                elfSymbol.setValue(externalBlockAddrOffset); // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
-                this.evaluateElfSymbol(elfSymbol, address, true);
-                externalBlockAddrOffset += undefEntrySize;
+                String symName = elfSymbol.getNameAsString();
+
+                if (elfSymbol.getSectionHeaderIndex() == ElfSectionHeaderConstants.SHN_UNDEF && symName != null && !symName.isEmpty())
+                {
+                    Address address = this.aSpace.getAddress(externalBlockAddrOffset);
+                    elfSymbol.setValue(externalBlockAddrOffset); // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
+                    this.evaluateElfSymbol(elfSymbol, address, true);
+                    externalBlockAddrOffset += undefEntrySize;
+                }
             }
         }
     }

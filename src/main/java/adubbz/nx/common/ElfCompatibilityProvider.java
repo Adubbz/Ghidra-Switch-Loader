@@ -96,7 +96,8 @@ public class ElfCompatibilityProvider
         
         ElfDynamicTable dynamicTable = this.getDynamicTable();
         
-        if (dynamicTable == null) return null;
+        if (dynamicTable == null || !dynamicTable.containsDynamicValue(ElfDynamicType.DT_STRTAB)) 
+            return null;
         
         try
         {
