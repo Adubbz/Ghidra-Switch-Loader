@@ -75,10 +75,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
     @Override
     public boolean canAnalyze(Program program) 
     {
-        // TODO: Better checking here
-        if (program.getName().endsWith(".kip1"))
-                return true;
-        return false;
+        return program.getExecutableFormat().equals(SwitchLoader.SWITCH_NAME);
     }
 
     @Override
