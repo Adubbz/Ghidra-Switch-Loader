@@ -18,7 +18,6 @@ import ghidra.program.model.listing.Group;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.ProgramFragment;
 import ghidra.program.model.listing.ProgramModule;
-import ghidra.util.Msg;
 import ghidra.util.exception.NotFoundException;
 
 public class UIUtil 

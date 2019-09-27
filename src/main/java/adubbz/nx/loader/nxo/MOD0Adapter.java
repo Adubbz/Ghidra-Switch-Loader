@@ -16,7 +16,6 @@ import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
 import ghidra.app.util.bin.format.elf.ElfDynamic;
 import ghidra.app.util.bin.format.elf.ElfDynamicTable;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
-import ghidra.program.model.address.AddressRangeImpl;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;

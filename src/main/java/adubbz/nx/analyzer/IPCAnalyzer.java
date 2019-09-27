@@ -23,11 +23,11 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multimap;
 
-import adubbz.nx.loader.SwitchLoader;
 import adubbz.nx.analyzer.ipc.IPCEmulator;
 import adubbz.nx.analyzer.ipc.IPCTrace;
 import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.NXRelocation;
+import adubbz.nx.loader.SwitchLoader;
 import generic.stl.Pair;
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalyzerType;

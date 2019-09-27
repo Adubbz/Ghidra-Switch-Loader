@@ -6,39 +6,7 @@
  */
 package adubbz.nx.loader.nxo;
 
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
-import com.google.common.collect.ImmutableList;
-
-import adubbz.nx.common.ElfCompatibilityProvider;
-import adubbz.nx.common.NXRelocation;
-import adubbz.nx.util.ByteUtil;
-import generic.continues.RethrowContinuesFactory;
-import ghidra.app.util.bin.BinaryReader;
-import ghidra.app.util.bin.ByteProviderWrapper;
-import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
-import ghidra.app.util.bin.format.elf.ElfDynamic;
-import ghidra.app.util.bin.format.elf.ElfDynamicTable;
-import ghidra.app.util.bin.format.elf.ElfDynamicType;
-import ghidra.app.util.bin.format.elf.ElfHeader;
-import ghidra.app.util.bin.format.elf.ElfSectionHeader;
-import ghidra.app.util.bin.format.elf.ElfStringTable;
-import ghidra.app.util.bin.format.elf.ElfSymbol;
-import ghidra.app.util.bin.format.elf.ElfSymbolTable;
-import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
-import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
-import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
 import ghidra.program.model.listing.Program;
-import ghidra.util.Msg;
-import ghidra.util.exception.NotFoundException;
 
 public class NXOHeader 
 {

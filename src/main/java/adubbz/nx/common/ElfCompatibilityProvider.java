@@ -16,12 +16,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import adubbz.nx.util.ByteUtil;
 import adubbz.nx.util.FullMemoryByteProvider;
 import generic.continues.RethrowContinuesFactory;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.MemoryByteProvider;
 import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
 import ghidra.app.util.bin.format.elf.ElfDynamic;
 import ghidra.app.util.bin.format.elf.ElfDynamicTable;

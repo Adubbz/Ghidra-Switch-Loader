@@ -9,7 +9,6 @@ package adubbz.nx.loader.kip1;
 import java.io.IOException;
 
 import adubbz.nx.loader.nxo.MOD0Adapter;
-import adubbz.nx.loader.nxo.NXOAdapter;
 import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import adubbz.nx.util.ByteUtil;
