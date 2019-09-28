@@ -12,18 +12,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import adubbz.nx.loader.kip1.KIP1Header;
 import adubbz.nx.loader.kip1.KIP1ProgramBuilder;
 import adubbz.nx.loader.knx.KNXProgramBuilder;
-import adubbz.nx.loader.nro0.NRO0Header;
 import adubbz.nx.loader.nro0.NRO0ProgramBuilder;
-import adubbz.nx.loader.nso0.NSO0Header;
 import adubbz.nx.loader.nso0.NSO0ProgramBuilder;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.ByteProviderWrapper;
-import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.BinaryLoader;
 import ghidra.app.util.opinion.LoadSpec;
@@ -33,7 +29,6 @@ import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
-import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.lang.CompilerSpec;
 import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.Language;
@@ -106,7 +101,7 @@ public class SwitchLoader extends BinaryLoader
 
         try 
         {
-            success = this.loadInto(provider, loadSpec, options, log, prog, monitor, MemoryConflictHandler.ALWAYS_OVERWRITE);
+            success = this.loadInto(provider, loadSpec, options, log, prog, monitor);
         }
         finally 
         {
@@ -124,7 +119,7 @@ public class SwitchLoader extends BinaryLoader
 
     @Override
     protected boolean loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options,
-            MessageLog messageLog, Program program, TaskMonitor monitor, MemoryConflictHandler memoryConflictHandler) 
+            MessageLog messageLog, Program program, TaskMonitor monitor) 
                     throws IOException
     {
         var space = program.getAddressFactory().getDefaultAddressSpace();
@@ -132,7 +127,7 @@ public class SwitchLoader extends BinaryLoader
         if (this.binaryType == BinaryType.SX_KIP1)
         {
             ByteProvider offsetProvider = new ByteProviderWrapper(provider, 0x10, provider.length() - 0x10);
-            KIP1ProgramBuilder.loadKIP1(offsetProvider, program, memoryConflictHandler, monitor);
+            KIP1ProgramBuilder.loadKIP1(offsetProvider, program, monitor);
         }
         else
         {
@@ -149,16 +144,16 @@ public class SwitchLoader extends BinaryLoader
             
             if (this.binaryType == BinaryType.KIP1)
             {
-                KIP1ProgramBuilder.loadKIP1(provider, program, memoryConflictHandler, monitor);
+                KIP1ProgramBuilder.loadKIP1(provider, program, monitor);
             }
 
             else if (this.binaryType == BinaryType.NSO0)
             {
-                NSO0ProgramBuilder.loadNSO0(provider, program, memoryConflictHandler, monitor);
+                NSO0ProgramBuilder.loadNSO0(provider, program, monitor);
             }
             else if (this.binaryType == BinaryType.NRO0)
             {
-                NRO0ProgramBuilder.loadNRO0(provider, program, memoryConflictHandler, monitor);
+                NRO0ProgramBuilder.loadNRO0(provider, program, monitor);
             }
             else if (this.binaryType == BinaryType.KERNEL_800)
             {
@@ -171,7 +166,7 @@ public class SwitchLoader extends BinaryLoader
                     Msg.error(this, "Failed to set image base");
                 }
                 
-                KNXProgramBuilder.loadKNX(provider, program, memoryConflictHandler, monitor);
+                KNXProgramBuilder.loadKNX(provider, program, monitor);
             }
         }
         

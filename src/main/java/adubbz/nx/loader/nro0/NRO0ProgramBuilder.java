@@ -8,21 +8,20 @@ package adubbz.nx.loader.nro0;
 
 import adubbz.nx.loader.common.NXProgramBuilder;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
 
 public class NRO0ProgramBuilder extends NXProgramBuilder
 {
-    protected NRO0ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
+    protected NRO0ProgramBuilder(ByteProvider provider, Program program)
     {
-        super(program, provider, new NRO0Adapter(program, provider), handler);
+        super(program, provider, new NRO0Adapter(program, provider));
     }
     
-    public static void loadNRO0(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
+    public static void loadNRO0(ByteProvider provider, Program program, TaskMonitor monitor)
     {
-        NRO0ProgramBuilder builder = new NRO0ProgramBuilder(provider, program, conflictHandler);
+        NRO0ProgramBuilder builder = new NRO0ProgramBuilder(provider, program);
         builder.load(monitor);
     }
 }

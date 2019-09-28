@@ -9,20 +9,19 @@ package adubbz.nx.loader.kip1;
 
 import adubbz.nx.loader.common.NXProgramBuilder;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
 public class KIP1ProgramBuilder extends NXProgramBuilder
 {
-    protected KIP1ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
+    protected KIP1ProgramBuilder(ByteProvider provider, Program program)
     {
-        super(program, provider, new KIP1Adapter(program, provider), handler);
+        super(program, provider, new KIP1Adapter(program, provider));
     }
     
-    public static void loadKIP1(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
+    public static void loadKIP1(ByteProvider provider, Program program, TaskMonitor monitor)
     {
-        KIP1ProgramBuilder builder = new KIP1ProgramBuilder(provider, program, conflictHandler);
+        KIP1ProgramBuilder builder = new KIP1ProgramBuilder(provider, program);
         builder.load(monitor);
     }
     

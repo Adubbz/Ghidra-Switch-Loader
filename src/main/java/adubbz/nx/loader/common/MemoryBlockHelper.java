@@ -6,39 +6,21 @@
  */
 package adubbz.nx.loader.common;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
-import adubbz.nx.util.ByteUtil;
-import ghidra.app.util.MemoryBlockUtil;
+import org.apache.commons.compress.utils.Lists;
+
+import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
-import ghidra.app.util.bin.format.elf.ElfHeader;
-import ghidra.app.util.bin.format.elf.ElfSectionHeader;
-import ghidra.app.util.bin.format.elf.ElfStringTable;
-import ghidra.app.util.bin.format.elf.ElfSymbolTable;
-import ghidra.framework.store.LockException;
+import ghidra.app.util.importer.MessageLog;
+import ghidra.program.database.mem.FileBytes;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressOutOfBoundsException;
-import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressRange;
 import ghidra.program.model.address.AddressRangeImpl;
-import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
-import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
-import ghidra.program.model.mem.MemoryBlockException;
-import ghidra.program.model.mem.MemoryConflictException;
 import ghidra.util.Msg;
-import ghidra.util.exception.DuplicateNameException;
-import ghidra.util.exception.NotFoundException;
 import ghidra.util.task.TaskMonitor;
 
 public class MemoryBlockHelper 
@@ -46,99 +28,106 @@ public class MemoryBlockHelper
     private TaskMonitor monitor;
     private Program program;
     private ByteProvider byteProvider;
-    private MemoryBlockUtil mbu;
-    private long baseAddress;
-    
-    private List<String> sectionsToInit = new ArrayList<>();
+    private MessageLog log;
 
-    public MemoryBlockHelper(TaskMonitor monitor, Program program, ByteProvider byteProvider, MemoryBlockUtil mbu, long baseAddress)
+    public MemoryBlockHelper(TaskMonitor monitor, Program program, ByteProvider byteProvider)
     {
         this.monitor = monitor;
         this.program = program;
         this.byteProvider = byteProvider;
-        this.mbu = mbu;
-        this.baseAddress = baseAddress;
+        this.log = new MessageLog();
     }
-
-    public MemoryBlock addManualDeferredSection(String name, long addressOffset, InputStream dataInput, long dataSize, boolean read, boolean write, boolean execute)
+    
+    public void addSection(String name, long addressOffset, long offset, long length, boolean read, boolean write, boolean execute)
     {
-        AddressSpace addressSpace = this.program.getAddressFactory().getDefaultAddressSpace();
-        MemoryBlock mb = null;
-        
-        try 
+        try
         {
-            mb = this.mbu.createUninitializedBlock(false, name, addressSpace.getAddress(this.baseAddress + addressOffset), dataSize, "", null, read, write, execute);
+            FileBytes fileBytes = MemoryBlockUtils.createFileBytes(this.program, this.byteProvider, offset, length, this.monitor);
+            MemoryBlockUtils.createInitializedBlock(this.program, false, name, this.program.getImageBase().add(addressOffset), fileBytes, 0, length, "", null, read, write, execute, this.log);
+        }
+        catch (Exception e)
+        {
+            Msg.error(this, "Failed to add section " + name, e);
+        }
+        
+        this.flushLog();
+    }
+    
+    private void addUniqueSection(String name, long addressOffset, long offset, long length, boolean read, boolean write, boolean execute)
+    {
+        Memory memory = this.program.getMemory();
+        Address startAddr = this.program.getImageBase().add(addressOffset);
+        Address endAddr = startAddr.add(length);
+        String newBlockName = name;
+        int nameCounter = 0;
+        
+        while (memory.getBlock(newBlockName) != null)
+        {
+            nameCounter++;
+            newBlockName = name + "." + nameCounter; 
+        }
+        
+        Msg.info(this, "Adding unique section " + newBlockName + " from " + startAddr.toString() + " to " + endAddr.toString());
+        this.addSection(newBlockName, offset, offset, length, read, write, execute);
+    }
+    
+    public void addFillerSection(String name, long addressOffset, long length, boolean read, boolean write, boolean execute)
+    {
+        Memory memory = this.program.getMemory();
+        Address startAddr = this.program.getImageBase().add(addressOffset);
+        Address endAddr = startAddr.add(length);
+        AddressRange range = new AddressRangeImpl(startAddr, endAddr);
+        
+        List<MemoryBlock> blocksInRange = Lists.newArrayList();
+        
+        for (MemoryBlock block : memory.getBlocks())
+        {
+            AddressRange blockRange = new AddressRangeImpl(block.getStart(), block.getEnd());
             
-            if (mb == null)
+            if (range.intersects(blockRange))
             {
-                Msg.error(this, this.mbu.getMessages());
-            }
-        } 
-        catch (AddressOutOfBoundsException e) 
-        {
-            e.printStackTrace();
-        }
-        
-        return mb;
-    }
-    
-    public void addDeferredSection(String name, long addressOffset, InputStream dataInput, long dataSize, boolean read, boolean write, boolean execute)
-    {
-        MemoryBlock mb = this.addManualDeferredSection(name, addressOffset, dataInput, dataSize, read, write, execute);
-        
-        if (mb != null)
-        {
-            this.sectionsToInit.add(mb.getName());
-        }
-    }
-    
-    public void addSection(String name, long addressOffset, InputStream dataInput, long dataSize, boolean read, boolean write, boolean execute) throws AddressOverflowException, AddressOutOfBoundsException
-    {
-        AddressSpace addressSpace = this.program.getAddressFactory().getDefaultAddressSpace();
-        this.mbu.createInitializedBlock(name, addressSpace.getAddress(this.baseAddress + addressOffset), dataInput, dataSize, "", null, read, write, execute, this.monitor);
-    }
-    
-    public void finalizeSection(String name) throws LockException, NotFoundException, MemoryAccessException, IOException
-    {
-        Memory memory = this.program.getMemory();
-        Msg.info(this, "Attempting to manually finalize " + name);
-        
-        for (MemoryBlock block : memory.getBlocks())
-        {
-            if (block.getName().equals(name))
-            {
-                Msg.info(this, "Manually finalizing " + name);
-                memory.convertToInitialized(block, (byte)0);
-                byte[] data = this.byteProvider.readBytes(block.getStart().getOffset() - this.baseAddress, block.getSize());
-                block.putBytes(block.getStart(), data);
+                blocksInRange.add(block);
             }
         }
-    }
-    
-    public void finalizeSections() throws LockException, NotFoundException, MemoryAccessException, IOException
-    {
-        Memory memory = this.program.getMemory();
         
-        for (MemoryBlock block : memory.getBlocks())
+        if (blocksInRange.isEmpty())
         {
-            if (this.sectionsToInit.contains(block.getName()))
+            Msg.info(this, "Adding filler section " + name + " from " + startAddr.toString() + " to " + endAddr.toString());
+            this.addSection(name, addressOffset, addressOffset, range.getLength(), read, write, execute);
+            return;
+        }
+        
+        Address fillerBlockStart = startAddr;
+        AddressRange fillerBlockRange;
+        
+        for (MemoryBlock block : blocksInRange)
+        {
+            fillerBlockRange = new AddressRangeImpl(fillerBlockStart, block.getStart());
+            
+            if (fillerBlockRange.getLength() > 2)
             {
-                memory.convertToInitialized(block, (byte)0);
-                byte[] data = this.byteProvider.readBytes(block.getStart().getOffset() - this.baseAddress, block.getSize());
-                block.putBytes(block.getStart(), data);
+                long offset = fillerBlockRange.getMinAddress().subtract(this.program.getImageBase());
+                this.addUniqueSection(name, offset, offset, fillerBlockRange.getLength() - 1, read, write, execute);
             }
+            
+            fillerBlockStart = block.getEnd().add(1);
+        }
+        
+        fillerBlockRange = new AddressRangeImpl(fillerBlockStart, endAddr);
+        
+        if (fillerBlockRange.getLength() > 2)
+        {
+            long offset = fillerBlockRange.getMinAddress().subtract(this.program.getImageBase());
+            this.addUniqueSection(name, offset, offset, fillerBlockRange.getLength() - 1, read, write, execute);
         }
     }
     
-    private class DeferredInitSection
+    public void flushLog()
     {
-        private MemoryBlock block;
-        private InputStream dataInput;
-        
-        public DeferredInitSection(MemoryBlock block, InputStream dataInput)
+        if (this.log.getMsgCount() > 0)
         {
-            this.block = block;
-            this.dataInput = dataInput;
+            Msg.info(this, this.log.toString());
+            this.log.clear();
         }
     }
 }

@@ -8,20 +8,19 @@ package adubbz.nx.loader.nso0;
 
 import adubbz.nx.loader.common.NXProgramBuilder;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
 public class NSO0ProgramBuilder extends NXProgramBuilder
 {
-    protected NSO0ProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler)
+    protected NSO0ProgramBuilder(ByteProvider provider, Program program)
     {
-        super(program, provider, new NSO0Adapter(program, provider), handler);
+        super(program, provider, new NSO0Adapter(program, provider));
     }
     
-    public static void loadNSO0(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
+    public static void loadNSO0(ByteProvider provider, Program program, TaskMonitor monitor)
     {
-        NSO0ProgramBuilder builder = new NSO0ProgramBuilder(provider, program, conflictHandler);
+        NSO0ProgramBuilder builder = new NSO0ProgramBuilder(provider, program);
         builder.load(monitor);
     }
 }

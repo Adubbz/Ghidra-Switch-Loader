@@ -20,6 +20,7 @@ import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.pcode.emulate.BreakCallBack;
 import ghidra.pcode.emulate.BreakTableCallBack;
 import ghidra.pcode.emulate.Emulate;
+import ghidra.pcode.error.LowlevelError;
 import ghidra.pcode.memstate.MemoryBank;
 import ghidra.pcode.memstate.MemoryFaultHandler;
 import ghidra.pcode.memstate.MemoryPageBank;
@@ -38,6 +39,8 @@ import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;
+import ghidra.util.exception.CancelledException;
+import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
 
 public class IPCEmulator 
@@ -327,7 +330,14 @@ public class IPCEmulator
                 break;
             }
                 
-            emu.executeInstruction(true);
+            try 
+            {
+                emu.executeInstruction(true, TaskMonitor.DUMMY);
+            } 
+            catch (CancelledException | LowlevelError e) 
+            {
+                e.printStackTrace();
+            }
         }
         
         return this.currentTrace;

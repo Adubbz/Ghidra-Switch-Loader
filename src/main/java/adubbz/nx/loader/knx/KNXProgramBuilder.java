@@ -8,20 +8,19 @@ package adubbz.nx.loader.knx;
 
 import adubbz.nx.loader.common.NXProgramBuilder;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.importer.MemoryConflictHandler;
 import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 
 public class KNXProgramBuilder extends NXProgramBuilder
 {
-    protected KNXProgramBuilder(ByteProvider provider, Program program, MemoryConflictHandler handler) 
+    protected KNXProgramBuilder(ByteProvider provider, Program program) 
     {
-        super(program, provider, new KNXAdapter(program, provider), handler);
+        super(program, provider, new KNXAdapter(program, provider));
     }
 
-    public static void loadKNX(ByteProvider provider, Program program, MemoryConflictHandler conflictHandler, TaskMonitor monitor)
+    public static void loadKNX(ByteProvider provider, Program program, TaskMonitor monitor)
     {
-        KNXProgramBuilder builder = new KNXProgramBuilder(provider, program, conflictHandler);
+        KNXProgramBuilder builder = new KNXProgramBuilder(provider, program);
         builder.load(monitor);
     }
 }

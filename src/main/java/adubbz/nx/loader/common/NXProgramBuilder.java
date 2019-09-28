@@ -7,7 +7,6 @@
 package adubbz.nx.loader.common;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +22,7 @@ import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import adubbz.nx.util.UIUtil;
 import ghidra.app.cmd.label.SetLabelPrimaryCmd;
-import ghidra.app.util.MemoryBlockUtil;
+import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
@@ -31,13 +30,11 @@ import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbol;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
-import ghidra.app.util.importer.MemoryConflictHandler;
+import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
-import ghidra.program.model.address.AddressRange;
-import ghidra.program.model.address.AddressRangeImpl;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataTypeConflictException;
@@ -68,7 +65,6 @@ public abstract class NXProgramBuilder
     protected ByteProvider fileByteProvider;
     protected Program program;
     protected NXOHeader nxo;
-    protected MemoryBlockUtil mbu;
     
     protected AddressSpace aSpace;
     protected MemoryBlockHelper memBlockHelper;
@@ -77,12 +73,11 @@ public abstract class NXProgramBuilder
     
     protected int undefSymbolCount;
     
-    protected NXProgramBuilder(Program program, ByteProvider provider, NXOAdapter adapter, MemoryConflictHandler handler)
+    protected NXProgramBuilder(Program program, ByteProvider provider, NXOAdapter adapter)
     {
         this.program = program;
         this.fileByteProvider = provider;
         this.nxo = new NXOHeader(program, adapter, program.getImageBase().getOffset());
-        this.mbu = new MemoryBlockUtil(program, handler);
     }
     
     protected void load(TaskMonitor monitor)
@@ -93,29 +88,19 @@ public abstract class NXProgramBuilder
         
         try 
         {
-            this.memBlockHelper = new MemoryBlockHelper(monitor, this.program, memoryProvider, this.mbu, this.nxo.getBaseAddress());
+            this.memBlockHelper = new MemoryBlockHelper(monitor, this.program, memoryProvider);
             
             NXOSection text = adapter.getSection(NXOSectionType.TEXT);
             NXOSection rodata = adapter.getSection(NXOSectionType.RODATA);
             NXOSection data = adapter.getSection(NXOSectionType.DATA);
             
-            // Setup memory blocks
-            InputStream textInputStream = memoryProvider.getInputStream(text.getOffset());
-            InputStream rodataInputStream = memoryProvider.getInputStream(rodata.getOffset());
-            InputStream dataInputStream = memoryProvider.getInputStream(data.getOffset());
-            
-            this.memBlockHelper.addDeferredSection(".text", text.getOffset(), textInputStream, text.getSize(), true, false, true);
-            this.memBlockHelper.addDeferredSection(".rodata", rodata.getOffset(), rodataInputStream, rodata.getSize(), true, false, false);
-            this.memBlockHelper.addDeferredSection(".data", data.getOffset(), dataInputStream, data.getSize(), true, true, false);
-            
             if (adapter.getDynamicSize() == 0)
             {
                 // We can't create .dynamic, so work with what we've got.
-                this.memBlockHelper.finalizeSections();
                 return;
             }
             
-            this.memBlockHelper.addSection(".dynamic", adapter.getDynamicOffset(), memoryProvider.getInputStream(adapter.getDynamicOffset()), adapter.getDynamicSize(), true, true, false);
+            this.memBlockHelper.addSection(".dynamic", adapter.getDynamicOffset(), adapter.getDynamicOffset(), adapter.getDynamicSize(), true, true, false);
 
             // Create dynamic sections
             this.tryCreateDynBlock(".dynstr", ElfDynamicType.DT_STRTAB, ElfDynamicType.DT_STRSZ);
@@ -129,19 +114,23 @@ public abstract class NXProgramBuilder
             
             if (adapter.getSymbolTable() != null)
             {
-                this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), memoryProvider.getInputStream(adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress()), adapter.getSymbolTable().getLength(), true, false, false);
+                this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable().getLength(), true, false, false);
             }
+            
+            this.setupRelocations();
+            this.createGlobalOffsetTable();
+            
+            this.memBlockHelper.addFillerSection(".text", text.getOffset(), text.getSize(), true, false, true);
+            this.memBlockHelper.addFillerSection(".rodata", rodata.getOffset(), rodata.getSize(), true, false, false);
+            this.memBlockHelper.addFillerSection(".data", data.getOffset(), data.getSize(), true, true, false);
             
             this.setupStringTable();
             this.setupSymbolTable();
-            this.setupRelocations();
-            this.createGlobalOffsetTable();
-            this.memBlockHelper.finalizeSections();
             
             // Create BSS. This needs to be done before the EXTERNAL block is created in setupImports
             Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getBssOffset());
             Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + adapter.getBssSize()));
-            this.mbu.createUninitializedBlock(false, ".bss", bssStartAddr, adapter.getBssSize(), "", null, true, true, false);
+            MemoryBlockUtils.createUninitializedBlock(this.program, false, ".bss", bssStartAddr, adapter.getBssSize(), "", null, true, true, false, new MessageLog());
             
             this.setupImports(monitor);
             this.performRelocations();
@@ -157,7 +146,7 @@ public abstract class NXProgramBuilder
                 }
             }
         }
-        catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException | LockException e)
+        catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException e)
         {
             e.printStackTrace();
         }
@@ -230,7 +219,7 @@ public abstract class NXProgramBuilder
         if (adapter.getDynamicTable().containsDynamicValue(ElfDynamicType.DT_PLTGOT))
         {
             long pltGotOff = adapter.getDynamicTable().getDynamicValue(ElfDynamicType.DT_PLTGOT);
-            this.memBlockHelper.addSection(".got.plt", pltGotOff, memoryProvider.getInputStream(pltGotOff), pltGotEnd - pltGotOff, true, false, false);
+            this.memBlockHelper.addSection(".got.plt", pltGotOff, pltGotOff, pltGotEnd - pltGotOff, true, false, false);
         }
         
         int last = 12;
@@ -273,7 +262,7 @@ public abstract class NXProgramBuilder
         
         long pltStart = this.pltEntries.get(0).off;
         long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
-        this.memBlockHelper.addSection(".plt", pltStart, memoryProvider.getInputStream(pltStart), pltEnd - pltStart, true, false, false);
+        this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
     }
     
     protected void createGlobalOffsetTable() throws AddressOverflowException, AddressOutOfBoundsException, IOException
@@ -288,7 +277,7 @@ public abstract class NXProgramBuilder
         if (gotSize > 0)
         {
             Msg.info(this, String.format("Created got from 0x%X to 0x%X", gotStartOff, gotStartOff + gotSize));
-            this.memBlockHelper.addSection(".got", gotStartOff, memoryProvider.getInputStream(gotStartOff), gotSize, true, false, false);
+            this.memBlockHelper.addSection(".got", gotStartOff, gotStartOff, gotSize, true, false, false);
         }
     }
     
@@ -353,7 +342,10 @@ public abstract class NXProgramBuilder
                 long addr = this.nxo.getBaseAddress() + entry.off;
                 String name = gotNameLookup.get(entry.target);
                 // TODO: Mark as func
-                this.createSymbol(this.aSpace.getAddress(addr), name, false, false, null);
+                if (name != null && !name.isEmpty())
+                {
+                    this.createSymbol(this.aSpace.getAddress(addr), name, false, false, null);
+                }
             }
         }
     }
@@ -505,7 +497,7 @@ public abstract class NXProgramBuilder
             }
     
             String name = elfSymbol.getNameAsString();
-            if (name == null) {
+            if (name == null || name.isEmpty()) {
                 return;
             }
     
@@ -663,11 +655,11 @@ public abstract class NXProgramBuilder
                 if (size > 0)
                 {
                     Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
-                    this.memBlockHelper.addSection(name, offset, this.nxo.getAdapter().getMemoryProvider().getInputStream(offset), size, true, false, false);
+                    this.memBlockHelper.addSection(name, offset, offset, size, true, false, false);
                 }
             }
         }
-        catch (NotFoundException | IOException | AddressOverflowException | AddressOutOfBoundsException e)
+        catch (NotFoundException | AddressOutOfBoundsException e)
         {
             Msg.warn(this, String.format("Couldn't create dyn block %s. It may be absent.", name), e);
         }
@@ -687,11 +679,11 @@ public abstract class NXProgramBuilder
                 if (size > 0)
                 {
                     Msg.info(this, String.format("Created dyn block %s at 0x%X of size 0x%X", name, offset, size));
-                    this.memBlockHelper.addSection(name, offset, this.nxo.getAdapter().getMemoryProvider().getInputStream(offset), size, true, false, false);
+                    this.memBlockHelper.addSection(name, offset, offset, size, true, false, false);
                 }
             }
         }
-        catch (NotFoundException | IOException | AddressOverflowException | AddressOutOfBoundsException e)
+        catch (NotFoundException | AddressOutOfBoundsException e)
         {
             Msg.warn(this, String.format("Couldn't create dyn block %s. It may be absent.", name), e);
         }
