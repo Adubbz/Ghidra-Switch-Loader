@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 import adubbz.nx.util.FullMemoryByteProvider;
+import adubbz.nx.util.LegacyFactoryBundledWithBinaryReader;
 import generic.continues.RethrowContinuesFactory;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
@@ -57,7 +58,7 @@ public class ElfCompatibilityProvider
     {
         this.program = program;
         this.provider = provider;
-        this.factoryReader = new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.provider, true);
+        this.factoryReader = new LegacyFactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.provider, true);
         this.dummyElfHeader = new DummyElfHeader();
     }
     
