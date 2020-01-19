@@ -19,8 +19,6 @@ import ghidra.util.Msg;
 
 public class NRO0Adapter extends MOD0Adapter
 {
-    protected ByteProvider fileProvider;
-    protected BinaryReader fileReader;
     protected NRO0Header nro0;
     
     protected ByteProvider memoryProvider;
@@ -28,10 +26,7 @@ public class NRO0Adapter extends MOD0Adapter
     
     public NRO0Adapter(Program program, ByteProvider fileProvider)
     {
-        super(program);
-        
-        this.fileProvider = fileProvider;
-        this.fileReader = new BinaryReader(this.fileProvider, true);
+        super(program, fileProvider);
         
         try
         {

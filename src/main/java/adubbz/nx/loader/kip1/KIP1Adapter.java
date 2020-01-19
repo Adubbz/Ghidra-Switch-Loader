@@ -20,8 +20,6 @@ import ghidra.util.Msg;
 
 public class KIP1Adapter extends MOD0Adapter
 {
-    protected ByteProvider fileProvider;
-    protected BinaryReader fileReader;
     protected KIP1Header kip1;
     
     protected ByteProvider memoryProvider;
@@ -29,10 +27,7 @@ public class KIP1Adapter extends MOD0Adapter
     
     public KIP1Adapter(Program program, ByteProvider fileProvider)
     {
-        super(program);
-        
-        this.fileProvider = fileProvider;
-        this.fileReader = new BinaryReader(this.fileProvider, true);
+        super(program, fileProvider);
         
         try
         {

@@ -11,11 +11,18 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.BiFunction;
 
+import adubbz.nx.loader.common.NXProgramBuilder;
+import adubbz.nx.loader.kip1.KIP1Adapter;
 import adubbz.nx.loader.kip1.KIP1ProgramBuilder;
+import adubbz.nx.loader.knx.KNXAdapter;
 import adubbz.nx.loader.knx.KNXProgramBuilder;
+import adubbz.nx.loader.nro0.NRO0Adapter;
 import adubbz.nx.loader.nro0.NRO0ProgramBuilder;
+import adubbz.nx.loader.nso0.NSO0Adapter;
 import adubbz.nx.loader.nso0.NSO0ProgramBuilder;
+import adubbz.nx.loader.nxo.NXOAdapter;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
@@ -42,7 +49,8 @@ import ghidra.util.task.TaskMonitor;
 public class SwitchLoader extends BinaryLoader 
 {
     public static final String SWITCH_NAME = "Nintendo Switch Binary";
-    public static final LanguageID LANG_ID = new LanguageID("AARCH64:LE:64:v8A");
+    public static final LanguageID AARCH64_LANGUAGE_ID = new LanguageID("AARCH64:LE:64:v8A");
+    public static final LanguageID AARCH32_LANGUAGE_ID = new LanguageID("ARM:LE:32:v8");
     private BinaryType binaryType;
 
     @Override
@@ -80,7 +88,16 @@ public class SwitchLoader extends BinaryLoader
         else
             return loadSpecs;
 
-        loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(LANG_ID, new CompilerSpecID("default")), true));
+        var adapter = this.binaryType.createAdapter(null, provider);
+        
+        if (adapter.isAarch32())
+        {
+            loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(AARCH32_LANGUAGE_ID, new CompilerSpecID("default")), true));
+        }
+        else
+        {
+            loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(AARCH64_LANGUAGE_ID, new CompilerSpecID("default")), true));
+        }
 
         return loadSpecs;
     }
@@ -126,48 +143,35 @@ public class SwitchLoader extends BinaryLoader
         
         if (this.binaryType == BinaryType.SX_KIP1)
         {
-            ByteProvider offsetProvider = new ByteProviderWrapper(provider, 0x10, provider.length() - 0x10);
-            KIP1ProgramBuilder.loadKIP1(offsetProvider, program, monitor);
+            provider = new ByteProviderWrapper(provider, 0x10, provider.length() - 0x10);
         }
-        else
+
+        var adapter = this.binaryType.createAdapter(program, provider);
+        
+        // Set the base address
+        try 
         {
+            long baseAddress = adapter.isAarch32() ? 0x60000000L : 0x7100000000L;
             
-            // Set the base address
-            try 
+            if (this.binaryType == BinaryType.KERNEL_800)
             {
-                program.setImageBase(space.getAddress(0x7100000000L), true);
-            } 
-            catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException e) 
-            {
-                Msg.error(this, "Failed to set image base");
-            }
-            
-            if (this.binaryType == BinaryType.KIP1)
-            {
-                KIP1ProgramBuilder.loadKIP1(provider, program, monitor);
+                baseAddress = 0x80060000L;
             }
 
-            else if (this.binaryType == BinaryType.NSO0)
-            {
-                NSO0ProgramBuilder.loadNSO0(provider, program, monitor);
-            }
-            else if (this.binaryType == BinaryType.NRO0)
-            {
-                NRO0ProgramBuilder.loadNRO0(provider, program, monitor);
-            }
-            else if (this.binaryType == BinaryType.KERNEL_800)
-            {
-                try 
-                {
-                    program.setImageBase(space.getAddress(0x80060000L), true);
-                } 
-                catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException e) 
-                {
-                    Msg.error(this, "Failed to set image base");
-                }
-                
-                KNXProgramBuilder.loadKNX(provider, program, monitor);
-            }
+            program.setImageBase(space.getAddress(baseAddress), true);
+        } 
+        catch (AddressOverflowException | LockException | IllegalStateException | AddressOutOfBoundsException e) 
+        {
+            Msg.error(this, "Failed to set image base", e);
+        }
+
+        var loader = new NXProgramBuilder(program, provider, adapter);
+        loader.load(monitor);
+        
+        if (this.binaryType == BinaryType.KIP1)
+        {
+            // KIP1s always start with a branch instruction at the start of their text
+            loader.createEntryFunction("entry", program.getImageBase().getOffset(), monitor);
         }
         
         return true;
@@ -193,17 +197,24 @@ public class SwitchLoader extends BinaryLoader
 
     private static enum BinaryType
     {
-        KIP1("Kernel Initial Process"), 
-        NSO0("Nintendo Shared Object"), 
-        NRO0("Nintendo Relocatable Object"),
-        SX_KIP1("Gateway Kernel Initial Process"),
-        KERNEL_800("Nintendo Switch Kernel 8.0.0+");
+        KIP1("Kernel Initial Process", KIP1Adapter::new),
+        NSO0("Nintendo Shared Object", NSO0Adapter::new), 
+        NRO0("Nintendo Relocatable Object", NRO0Adapter::new),
+        SX_KIP1("Gateway Kernel Initial Process", KIP1Adapter::new),
+        KERNEL_800("Nintendo Switch Kernel 8.0.0+", KNXAdapter::new);
         
         public final String name;
+        private final BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc;
         
-        private BinaryType(String name)
+        private BinaryType(String name, BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc)
         {
             this.name = name;
+            this.adapterFunc = adapterFunc;
+        }
+        
+        public NXOAdapter createAdapter(Program program, ByteProvider provider)
+        {
+            return adapterFunc.apply(program, provider);
         }
     }
 }

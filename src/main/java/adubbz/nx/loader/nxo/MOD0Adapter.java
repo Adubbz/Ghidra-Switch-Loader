@@ -12,6 +12,7 @@ import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.InvalidMagicException;
 import adubbz.nx.common.NXRelocation;
 import generic.continues.RethrowContinuesFactory;
+import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
 import ghidra.app.util.bin.format.elf.ElfDynamic;
 import ghidra.app.util.bin.format.elf.ElfDynamicTable;
@@ -26,11 +27,13 @@ import ghidra.util.exception.NotFoundException;
  */
 public abstract class MOD0Adapter extends NXOAdapter
 {
+    protected Program program;
     protected MOD0Header mod0;
     
-    public MOD0Adapter(Program program)
+    public MOD0Adapter(Program program, ByteProvider fileProvider)
     {
-        super(program);
+        super(fileProvider);
+        this.program = program;
     }
     
     @Override
@@ -47,8 +50,10 @@ public abstract class MOD0Adapter extends NXOAdapter
     @Override
     public long getDynamicSize()
     {
-        if (this.getElfProvider().getDynamicTable() != null)
-            return this.getElfProvider().getDynamicTable().getLength();
+        assert this.program != null;
+        
+        if (this.getElfProvider(this.program).getDynamicTable() != null)
+            return this.getElfProvider(this.program).getDynamicTable().getLength();
         
         long dtSize = 0;
         var factoryReader = new FactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.getMemoryProvider(), true);
@@ -58,8 +63,8 @@ public abstract class MOD0Adapter extends NXOAdapter
         {
             while (true) 
             {
-                ElfDynamic dyn = ElfDynamic.createElfDynamic(factoryReader, new ElfCompatibilityProvider.DummyElfHeader());
-                dtSize += 16; // 64 bit
+                ElfDynamic dyn = ElfDynamic.createElfDynamic(factoryReader, new ElfCompatibilityProvider.DummyElfHeader(this.isAarch32()));
+                dtSize += dyn.sizeof();
                 if (dyn.getTag() == ElfDynamicType.DT_NULL.value) 
                 {
                     break;
@@ -122,6 +127,8 @@ public abstract class MOD0Adapter extends NXOAdapter
     @Override
     public long getGotSize()
     {
+        assert this.program != null;
+        
         if (this.gotSize > 0)
             return this.gotSize;
         
@@ -136,12 +143,12 @@ public abstract class MOD0Adapter extends NXOAdapter
             return this.gotSize;
         }
         
-        ElfDynamicTable dt = this.getDynamicTable();
+        ElfDynamicTable dt = this.getDynamicTable(this.program);
         long baseAddr = this.program.getImageBase().getOffset();
-        long gotEnd = this.getGotOffset() + 8;
+        long gotEnd = this.getGotOffset() + this.getOffsetSize();
         boolean good = false;
         
-        if (dt == null || gotEnd == 8)
+        if (dt == null || gotEnd == this.getOffsetSize())
             return 0;
         
         try 
@@ -150,7 +157,7 @@ public abstract class MOD0Adapter extends NXOAdapter
             {
                 boolean foundOffset = false;
                 
-                for (NXRelocation reloc : this.getRelocations())
+                for (NXRelocation reloc : this.getRelocations(this.program))
                 {
                     if ((baseAddr + reloc.offset) == gotEnd)
                     {
@@ -163,7 +170,7 @@ public abstract class MOD0Adapter extends NXOAdapter
                     break;
                 
                 good = true;
-                gotEnd += 8;
+                gotEnd += this.getOffsetSize();
             }
         } 
         catch (NotFoundException e) 

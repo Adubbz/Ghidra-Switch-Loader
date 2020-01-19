@@ -4,33 +4,28 @@
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+package adubbz.nx.loader.nxo;
 
-package adubbz.nx.loader.kip1;
-
-import adubbz.nx.loader.common.NXProgramBuilder;
-import ghidra.app.util.bin.ByteProvider;
 import ghidra.program.model.listing.Program;
-import ghidra.util.task.TaskMonitor;
 
-public class KIP1ProgramBuilder extends NXProgramBuilder
+public class NXO 
 {
-    protected KIP1ProgramBuilder(ByteProvider provider, Program program)
+    private NXOAdapter adapter;
+    
+    protected final long baseAddress;
+    public NXO(Program program, NXOAdapter adapter, long baseAddress)
     {
-        super(program, provider, new KIP1Adapter(program, provider));
+        this.adapter = adapter;
+        this.baseAddress = baseAddress;
     }
     
-    public static void loadKIP1(ByteProvider provider, Program program, TaskMonitor monitor)
+    public NXOAdapter getAdapter()
     {
-        KIP1ProgramBuilder builder = new KIP1ProgramBuilder(provider, program);
-        builder.load(monitor);
+        return this.adapter;
     }
     
-    @Override
-    protected void load(TaskMonitor monitor)
+    public long getBaseAddress()
     {
-        super.load(monitor);
-        
-        // KIP1s always start with a branch instruction at the start of their text
-        this.createEntryFunction("entry", this.nxo.getBaseAddress(), monitor);
+        return this.baseAddress;
     }
 }

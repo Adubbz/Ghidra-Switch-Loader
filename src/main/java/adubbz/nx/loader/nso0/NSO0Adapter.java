@@ -21,8 +21,6 @@ import net.jpountz.lz4.LZ4FastDecompressor;
 
 public class NSO0Adapter extends MOD0Adapter
 {
-    protected ByteProvider fileProvider;
-    protected BinaryReader fileReader;
     protected NSO0Header nso0;
     
     protected ByteProvider memoryProvider;
@@ -30,10 +28,7 @@ public class NSO0Adapter extends MOD0Adapter
     
     public NSO0Adapter(Program program, ByteProvider fileProvider)
     {
-        super(program);
-        
-        this.fileProvider = fileProvider;
-        this.fileReader = new BinaryReader(this.fileProvider, true);
+        super(program, fileProvider);
         
         try
         {

@@ -26,13 +26,15 @@ import ghidra.util.Msg;
  */
 public abstract class NXOAdapter 
 {
-    protected Program program;
+    protected ByteProvider fileProvider;
+    protected BinaryReader fileReader;
     protected BinaryReader memoryReader;
     protected ElfCompatibilityProvider elfProvider;
     
-    public NXOAdapter(Program program)
+    public NXOAdapter(ByteProvider fileProvider)
     {
-        this.program = program;
+        this.fileProvider = fileProvider;
+        this.fileReader = new BinaryReader(this.fileProvider, true);
     }
     
     public abstract ByteProvider getMemoryProvider();
@@ -55,42 +57,70 @@ public abstract class NXOAdapter
     public abstract long getGotOffset();
     public abstract long getGotSize();
     
-    public ElfDynamicTable getDynamicTable()
+    public boolean isAarch32()
     {
-        return this.getElfProvider().getDynamicTable();
+        long dynamicOffset = this.getDynamicOffset();
+        
+        try
+        {
+            return this.getMemoryReader().readLong(dynamicOffset) > 0xFFFFFFFFL || this.getMemoryReader().readLong(dynamicOffset + 0x10) > 0xFFFFFFFFL;
+        }
+        catch (IOException e)
+        {
+            Msg.error(this, "Failed to check if aarch32", e);
+        }
+        
+        return false;
     }
     
-    public ElfStringTable getStringTable()
+    public int getOffsetSize()
     {
-        return this.getElfProvider().getStringTable();
+        return this.isAarch32() ? 4 : 8;
     }
     
-    public ElfSymbolTable getSymbolTable()
+    public NXOSection getSection(NXOSectionType type)
     {
-        return this.getElfProvider().getSymbolTable();
+        return this.getSections()[type.ordinal()];
     }
     
-    public String[] getDynamicLibraryNames() 
+    public abstract NXOSection[] getSections();
+    
+    public ElfDynamicTable getDynamicTable(Program program)
     {
-        return this.getElfProvider().getDynamicLibraryNames();
+        return this.getElfProvider(program).getDynamicTable();
     }
     
-    public ImmutableList<NXRelocation> getRelocations()
+    public ElfStringTable getStringTable(Program program)
     {
-        return ImmutableList.copyOf(this.getElfProvider().getRelocations());
+        return this.getElfProvider(program).getStringTable();
     }
     
-    public ImmutableList<NXRelocation> getPltRelocations()
+    public ElfSymbolTable getSymbolTable(Program program)
     {
-        return ImmutableList.copyOf(this.getElfProvider().getPltRelocations());
+        return this.getElfProvider(program).getSymbolTable();
     }
     
-    public ElfCompatibilityProvider getElfProvider()
+    public String[] getDynamicLibraryNames(Program program) 
+    {
+        return this.getElfProvider(program).getDynamicLibraryNames();
+    }
+    
+    public ImmutableList<NXRelocation> getRelocations(Program program)
+    {
+        return ImmutableList.copyOf(this.getElfProvider(program).getRelocations());
+    }
+    
+    public ImmutableList<NXRelocation> getPltRelocations(Program program)
+    {
+        return ImmutableList.copyOf(this.getElfProvider(program).getPltRelocations());
+    }
+    
+    public ElfCompatibilityProvider getElfProvider(Program program)
     {
         if (this.elfProvider != null)
             return this.elfProvider;
         
-        long baseAddress = this.program.getImageBase().getOffset();
+        long baseAddress = program.getImageBase().getOffset();
         long memoryProviderLength = 0x0;
         
         try 
@@ -102,15 +132,8 @@ public abstract class NXOAdapter
             Msg.error(this, "Failed to get memory provider length", e);
         }
         
-        this.elfProvider = new ElfCompatibilityProvider(program, new ByteProviderWrapper(this.getMemoryProvider(), -baseAddress, memoryProviderLength));
+        this.elfProvider = new ElfCompatibilityProvider(program, new ByteProviderWrapper(this.getMemoryProvider(), -baseAddress, memoryProviderLength), this.isAarch32());
         
         return this.elfProvider;
     }
-    
-    public NXOSection getSection(NXOSectionType type)
-    {
-        return this.getSections()[type.ordinal()];
-    }
-    
-    public abstract NXOSection[] getSections();
 }

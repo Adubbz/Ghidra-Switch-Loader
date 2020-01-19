@@ -13,7 +13,7 @@ import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.util.Msg;
 
-public class KIP1Header 
+public class KIP1Header
 {
     private String magic;
     private String name;

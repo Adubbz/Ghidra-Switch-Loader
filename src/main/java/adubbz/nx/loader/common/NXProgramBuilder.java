@@ -17,7 +17,7 @@ import com.google.common.primitives.Longs;
 
 import adubbz.nx.common.NXRelocation;
 import adubbz.nx.loader.nxo.NXOAdapter;
-import adubbz.nx.loader.nxo.NXOHeader;
+import adubbz.nx.loader.nxo.NXO;
 import adubbz.nx.loader.nxo.NXOSection;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import adubbz.nx.util.UIUtil;
@@ -30,6 +30,7 @@ import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbol;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
+import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationConstants;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
@@ -60,11 +61,11 @@ import ghidra.util.exception.InvalidInputException;
 import ghidra.util.exception.NotFoundException;
 import ghidra.util.task.TaskMonitor;
 
-public abstract class NXProgramBuilder 
+public class NXProgramBuilder 
 {
     protected ByteProvider fileByteProvider;
     protected Program program;
-    protected NXOHeader nxo;
+    protected NXO nxo;
     
     protected AddressSpace aSpace;
     protected MemoryBlockHelper memBlockHelper;
@@ -73,14 +74,14 @@ public abstract class NXProgramBuilder
     
     protected int undefSymbolCount;
     
-    protected NXProgramBuilder(Program program, ByteProvider provider, NXOAdapter adapter)
+    public NXProgramBuilder(Program program, ByteProvider provider, NXOAdapter adapter)
     {
         this.program = program;
         this.fileByteProvider = provider;
-        this.nxo = new NXOHeader(program, adapter, program.getImageBase().getOffset());
+        this.nxo = new NXO(program, adapter, program.getImageBase().getOffset());
     }
     
-    protected void load(TaskMonitor monitor)
+    public void load(TaskMonitor monitor)
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
@@ -108,13 +109,23 @@ public abstract class NXProgramBuilder
             this.tryCreateDynBlock(".fini_array", ElfDynamicType.DT_FINI_ARRAY, ElfDynamicType.DT_FINI_ARRAYSZ);
             this.tryCreateDynBlock(".rela.dyn", ElfDynamicType.DT_RELA, ElfDynamicType.DT_RELASZ);
             this.tryCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
-            this.tryCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
+            
+            if (adapter.isAarch32())
+            {
+                this.tryCreateDynBlock(".rel.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
+            }
+            else
+            {
+                this.tryCreateDynBlock(".rela.plt", ElfDynamicType.DT_JMPREL, ElfDynamicType.DT_PLTRELSZ);
+            }
+
             this.tryCreateDynBlockWithRange(".hash", ElfDynamicType.DT_HASH, ElfDynamicType.DT_GNU_HASH);
             this.tryCreateDynBlockWithRange(".gnu.hash", ElfDynamicType.DT_GNU_HASH, ElfDynamicType.DT_SYMTAB);
             
-            if (adapter.getSymbolTable() != null)
+            if (adapter.getSymbolTable(this.program) != null)
             {
-                this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable().getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable().getLength(), true, false, false);
+                Msg.info(this, String.format("String table offset %X, base addr %X", adapter.getSymbolTable(this.program).getFileOffset(), this.nxo.getBaseAddress()));
+                this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable(this.program).getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable(this.program).getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable(this.program).getLength(), true, false, false);
             }
             
             this.setupRelocations();
@@ -140,7 +151,7 @@ public abstract class NXProgramBuilder
             // We may want to manually figure this out ourselves in future.
             if (adapter.getGotSize() > 0)
             {
-                for (Address addr = this.aSpace.getAddress(adapter.getGotOffset()); addr.compareTo(this.aSpace.getAddress(adapter.getGotOffset() + adapter.getGotSize())) < 0; addr = addr.add(0x8))
+                for (Address addr = this.aSpace.getAddress(adapter.getGotOffset()); addr.compareTo(this.aSpace.getAddress(adapter.getGotOffset() + adapter.getGotSize())) < 0; addr = addr.add(adapter.getOffsetSize()))
                 {
                     this.createPointer(addr);
                 }
@@ -156,10 +167,15 @@ public abstract class NXProgramBuilder
         UIUtil.sortProgramTree(this.program);
     }
     
+    public NXO getNxo()
+    {
+        return this.nxo;
+    }
+    
     protected void setupStringTable() throws AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException
     {
        NXOAdapter adapter = this.nxo.getAdapter();
-       ElfStringTable stringTable = adapter.getStringTable();
+       ElfStringTable stringTable = adapter.getStringTable(this.program);
        
        if (stringTable == null)
            return;
@@ -180,9 +196,9 @@ public abstract class NXProgramBuilder
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         
-        if (adapter.getSymbolTable() != null)
+        if (adapter.getSymbolTable(this.program) != null)
         {
-            for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols()) 
+            for (ElfSymbol elfSymbol : adapter.getSymbolTable(this.program).getSymbols()) 
             {
                 String symName = elfSymbol.getNameAsString();
     
@@ -205,7 +221,7 @@ public abstract class NXProgramBuilder
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
         BinaryReader memoryReader = adapter.getMemoryReader();
-        ImmutableList<NXRelocation> pltRelocs = adapter.getPltRelocations();
+        ImmutableList<NXRelocation> pltRelocs = adapter.getPltRelocations(this.program);
         
         if (pltRelocs.isEmpty())
         {
@@ -214,12 +230,18 @@ public abstract class NXProgramBuilder
         }
             
         long pltGotStart = pltRelocs.get(0).offset;
-        long pltGotEnd = pltRelocs.get(pltRelocs.size() - 1).offset + 8;
+        long pltGotEnd = pltRelocs.get(pltRelocs.size() - 1).offset + adapter.getOffsetSize();
         
-        if (adapter.getDynamicTable().containsDynamicValue(ElfDynamicType.DT_PLTGOT))
+        if (adapter.getDynamicTable(this.program).containsDynamicValue(ElfDynamicType.DT_PLTGOT))
         {
-            long pltGotOff = adapter.getDynamicTable().getDynamicValue(ElfDynamicType.DT_PLTGOT);
+            long pltGotOff = adapter.getDynamicTable(this.program).getDynamicValue(ElfDynamicType.DT_PLTGOT);
             this.memBlockHelper.addSection(".got.plt", pltGotOff, pltGotOff, pltGotEnd - pltGotOff, true, false, false);
+        }
+        
+        // Only add .plt on aarch64
+        if (adapter.isAarch32())
+        {
+            return;
         }
         
         int last = 12;
@@ -287,12 +309,29 @@ public abstract class NXProgramBuilder
         Map<Long, String> gotNameLookup = new HashMap<>(); 
         
         // Relocations again
-        for (NXRelocation reloc : adapter.getRelocations()) 
+        for (NXRelocation reloc : adapter.getRelocations(this.program)) 
         {
             Address target = this.aSpace.getAddress(reloc.offset + this.nxo.getBaseAddress());
-            long originalValue = this.program.getMemory().getLong(target);
+            long originalValue = adapter.isAarch32() ? this.program.getMemory().getInt(target) : this.program.getMemory().getLong(target);
             
-            if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_GLOB_DAT ||
+            if (reloc.r_type == ARM_ElfRelocationConstants.R_ARM_GLOB_DAT ||
+                    reloc.r_type == ARM_ElfRelocationConstants.R_ARM_JUMP_SLOT ||
+                    reloc.r_type == ARM_ElfRelocationConstants.R_ARM_ABS32) 
+                {
+                    if (reloc.sym == null) 
+                    {
+                        Msg.error(this, String.format("Error: Relocation at %x failed", target.getOffset()));
+                    } 
+                    else 
+                    {
+                        program.getMemory().setInt(target, (int)(reloc.sym.getValue() + this.nxo.getBaseAddress()));
+                    }
+                } 
+            else if (reloc.r_type == ARM_ElfRelocationConstants.R_ARM_RELATIVE)
+            {
+                program.getMemory().setInt(target, (int)(program.getMemory().getInt(target) + this.nxo.getBaseAddress()));
+            }
+            else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_GLOB_DAT ||
                 reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_JUMP_SLOT ||
                 reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_ABS64) 
             {
@@ -319,7 +358,7 @@ public abstract class NXProgramBuilder
                 Msg.info(this, String.format("TODO: r_type 0x%x", reloc.r_type));
             }
             
-            long newValue = this.program.getMemory().getLong(target);
+            long newValue = adapter.isAarch32() ? this.program.getMemory().getInt(target) : this.program.getMemory().getLong(target);
             
             // Store relocations for Ghidra's relocation table view
             if (newValue != originalValue)
@@ -367,16 +406,16 @@ public abstract class NXProgramBuilder
                 lastAddrOff = block.getEnd().getOffset();
         }
         
-        int undefEntrySize = 8; // We create fake 1 byte functions for imports
+        int undefEntrySize = adapter.getOffsetSize(); // We create fake 1 byte functions for imports
         long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
         
         // Create the block where imports will be located
         this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
 
         // Handle imported symbols
-        if (adapter.getSymbolTable() != null)
+        if (adapter.getSymbolTable(this.program) != null)
         {
-            for (ElfSymbol elfSymbol : adapter.getSymbolTable().getSymbols())
+            for (ElfSymbol elfSymbol : adapter.getSymbolTable(this.program).getSymbols())
             {
                 String symName = elfSymbol.getNameAsString();
 
@@ -418,7 +457,7 @@ public abstract class NXProgramBuilder
         monitor.setMessage("Processing imports...");
 
         ExternalManager extManager = program.getExternalManager();
-        String[] neededLibs = adapter.getDynamicLibraryNames();
+        String[] neededLibs = adapter.getDynamicLibraryNames(this.program);
         
         for (String neededLib : neededLibs) 
         {
@@ -431,7 +470,7 @@ public abstract class NXProgramBuilder
         }
     }
     
-    protected Address createEntryFunction(String name, long entryAddr, TaskMonitor monitor) 
+    public Address createEntryFunction(String name, long entryAddr, TaskMonitor monitor) 
     {
         Address entryAddress = this.aSpace.getAddress(entryAddr);
 
@@ -477,11 +516,12 @@ public abstract class NXProgramBuilder
     
     protected int createPointer(Address address) throws CodeUnitInsertionException, DataTypeConflictException
     {
+        NXOAdapter adapter = this.nxo.getAdapter();
         Data d = this.program.getListing().getDataAt(address);
         
         if (d == null || !PointerDataType.dataType.isEquivalent(d.getDataType())) 
         {
-            d = this.program.getListing().createData(address, PointerDataType.dataType, 8);
+            d = this.program.getListing().createData(address, PointerDataType.dataType, adapter.getOffsetSize());
         }
         
         return d.getLength();
@@ -647,10 +687,10 @@ public abstract class NXProgramBuilder
         
         try
         {
-            if (adapter.getDynamicTable().containsDynamicValue(offsetType) && adapter.getDynamicTable().containsDynamicValue(sizeType))
+            if (adapter.getDynamicTable(this.program).containsDynamicValue(offsetType) && adapter.getDynamicTable(this.program).containsDynamicValue(sizeType))
             {
-                long offset = adapter.getDynamicTable().getDynamicValue(offsetType);
-                long size = adapter.getDynamicTable().getDynamicValue(sizeType);
+                long offset = adapter.getDynamicTable(this.program).getDynamicValue(offsetType);
+                long size = adapter.getDynamicTable(this.program).getDynamicValue(sizeType);
                 
                 if (size > 0)
                 {
@@ -671,10 +711,10 @@ public abstract class NXProgramBuilder
         
         try
         {
-            if (adapter.getDynamicTable().containsDynamicValue(start) && adapter.getDynamicTable().containsDynamicValue(end))
+            if (adapter.getDynamicTable(this.program).containsDynamicValue(start) && adapter.getDynamicTable(this.program).containsDynamicValue(end))
             {
-                long offset = adapter.getDynamicTable().getDynamicValue(start);
-                long size = adapter.getDynamicTable().getDynamicValue(end) - offset;
+                long offset = adapter.getDynamicTable(this.program).getDynamicValue(start);
+                long size = adapter.getDynamicTable(this.program).getDynamicValue(end) - offset;
                 
                 if (size > 0)
                 {

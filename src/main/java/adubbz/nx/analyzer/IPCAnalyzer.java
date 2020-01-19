@@ -91,7 +91,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         MemoryBlock text = memory.getBlock(".text");
         MemoryBlock rodata = memory.getBlock(".rodata");
         MemoryBlock data = memory.getBlock(".data");
-        ElfCompatibilityProvider elfCompatProvider = new ElfCompatibilityProvider(program);
+        ElfCompatibilityProvider elfCompatProvider = new ElfCompatibilityProvider(program, false);
         
         Msg.info(this, "Beginning IPC analysis...");
         

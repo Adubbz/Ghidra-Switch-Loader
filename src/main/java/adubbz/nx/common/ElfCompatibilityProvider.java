@@ -33,6 +33,7 @@ import ghidra.app.util.bin.format.elf.ElfSymbolTable;
 import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
 import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
+import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationConstants;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;
@@ -43,6 +44,7 @@ public class ElfCompatibilityProvider
     private Program program;
     private ByteProvider provider;
     private FactoryBundledWithBinaryReader factoryReader;
+    boolean isAarch32;
     
     private ElfHeader dummyElfHeader;
     
@@ -54,17 +56,18 @@ public class ElfCompatibilityProvider
     protected List<NXRelocation> relocs = new ArrayList<>();
     protected List<NXRelocation> pltRelocs = new ArrayList<>();
     
-    public ElfCompatibilityProvider(Program program, ByteProvider provider)
+    public ElfCompatibilityProvider(Program program, ByteProvider provider, boolean isAarch32)
     {
         this.program = program;
         this.provider = provider;
         this.factoryReader = new LegacyFactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.provider, true);
-        this.dummyElfHeader = new DummyElfHeader();
+        this.isAarch32 = isAarch32;
+        this.dummyElfHeader = new DummyElfHeader(isAarch32);
     }
     
-    public ElfCompatibilityProvider(Program program)
+    public ElfCompatibilityProvider(Program program, boolean isAarch32)
     {
-        this(program, new FullMemoryByteProvider(program));
+        this(program, new FullMemoryByteProvider(program), isAarch32);
     }
     
     public ElfDynamicTable getDynamicTable()
@@ -257,16 +260,36 @@ public class ElfCompatibilityProvider
     private Set<Long> processRelocations(List<NXRelocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
     {
         Set<Long> locations = new HashSet<Long>();
+        int relocSize = this.isAarch32 ? 0x8 : 0x18;
         
-        for (long i = 0; i < relsz / 0x18; i++) 
+        for (long i = 0; i < relsz / relocSize; i++) 
         {
             long base = this.program.getImageBase().getOffset();
-            long offset = this.factoryReader.readLong(base + rel + i * 0x18);
-            long info = this.factoryReader.readLong(base + rel + i * 0x18 + 8);
-            long addend = this.factoryReader.readLong(base + rel + i * 0x18 + 0x10);
+            long offset;
+            long info;
+            long addend;
             
-            long r_type = info & 0xffffffffL;
-            long r_sym = info >> 32;
+            long r_type;
+            long r_sym;
+        
+            // Assumes all aarch32 relocs have no addends,
+            // and all 64-bit ones do.
+            if (this.isAarch32)
+            {
+                offset = this.factoryReader.readInt(base + rel + i * 0x8);
+                info = this.factoryReader.readInt(base + rel + i * 0x8 + 4);
+                addend = 0;
+                r_type = info & 0xff;
+                r_sym = info >> 8;
+            }
+            else
+            {
+                offset = this.factoryReader.readLong(base + rel + i * 0x18);
+                info = this.factoryReader.readLong(base + rel + i * 0x18 + 8);
+                addend = this.factoryReader.readLong(base + rel + i * 0x18 + 0x10);
+                r_type = info & 0xffffffffL;
+                r_sym = info >> 32;
+            }
         
             ElfSymbol sym;
             if (r_sym != 0) {
@@ -277,7 +300,7 @@ public class ElfCompatibilityProvider
                 sym = null;
             }
             
-            if (r_type != AARCH64_ElfRelocationConstants.R_AARCH64_TLSDESC)
+            if (r_type != AARCH64_ElfRelocationConstants.R_AARCH64_TLSDESC && r_type != ARM_ElfRelocationConstants.R_ARM_TLS_DESC)
             {
                 locations.add(offset);
             }
@@ -299,10 +322,12 @@ public class ElfCompatibilityProvider
     // Fake only what is needed for an elf dynamic table
     public static class DummyElfHeader extends ElfHeader
     {
+        boolean isAarch32;
         private HashMap<Integer, ElfDynamicType> dynamicTypeMap;
         
-        public DummyElfHeader()
+        public DummyElfHeader(boolean isAarch32)
         {
+            this.isAarch32 = isAarch32;
             dynamicTypeMap = new HashMap<>();
             ElfDynamicType.addDefaultTypes(this.dynamicTypeMap);
 
@@ -344,7 +369,13 @@ public class ElfCompatibilityProvider
         @Override
         public boolean is32Bit() 
         {
-            return false;
+            return this.isAarch32;
+        }
+        
+        @Override
+        public boolean is64Bit()
+        {
+            return !this.isAarch32;
         }
     }
 }

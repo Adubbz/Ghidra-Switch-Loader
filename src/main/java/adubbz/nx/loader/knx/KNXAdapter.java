@@ -23,8 +23,6 @@ import ghidra.util.exception.NotFoundException;
 // We don't have a MOD0, but inherit from the adapter anyway to reduce redundancy
 public class KNXAdapter extends MOD0Adapter
 {
-    protected ByteProvider fileProvider;
-    protected BinaryReader fileReader;
     protected KNXMapHeader map;
     
     protected ByteProvider memoryProvider;
@@ -32,10 +30,7 @@ public class KNXAdapter extends MOD0Adapter
     
     public KNXAdapter(Program program, ByteProvider fileProvider)
     {
-        super(program);
-        
-        this.fileProvider = fileProvider;
-        this.fileReader = new BinaryReader(this.fileProvider, true);
+        super(program, fileProvider);
         
         try
         {
@@ -131,7 +126,7 @@ public class KNXAdapter extends MOD0Adapter
     @Override
     public long getGotOffset()
     {
-        ElfDynamicTable dt = this.getDynamicTable();
+        ElfDynamicTable dt = this.getDynamicTable(this.program);
         
         if (dt == null)
             return 0;
@@ -142,7 +137,7 @@ public class KNXAdapter extends MOD0Adapter
     @Override
     public long getGotSize()
     {
-        ElfDynamicTable dt = this.getDynamicTable();
+        ElfDynamicTable dt = this.getDynamicTable(this.program);
         
         if (dt == null || !dt.containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY))
             return 0;
