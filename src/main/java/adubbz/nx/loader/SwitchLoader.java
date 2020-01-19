@@ -15,13 +15,9 @@ import java.util.function.BiFunction;
 
 import adubbz.nx.loader.common.NXProgramBuilder;
 import adubbz.nx.loader.kip1.KIP1Adapter;
-import adubbz.nx.loader.kip1.KIP1ProgramBuilder;
 import adubbz.nx.loader.knx.KNXAdapter;
-import adubbz.nx.loader.knx.KNXProgramBuilder;
 import adubbz.nx.loader.nro0.NRO0Adapter;
-import adubbz.nx.loader.nro0.NRO0ProgramBuilder;
 import adubbz.nx.loader.nso0.NSO0Adapter;
-import adubbz.nx.loader.nso0.NSO0ProgramBuilder;
 import adubbz.nx.loader.nxo.NXOAdapter;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.BinaryReader;
