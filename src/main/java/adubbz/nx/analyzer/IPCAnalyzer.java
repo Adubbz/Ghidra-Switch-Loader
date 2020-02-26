@@ -127,6 +127,12 @@ public class IPCAnalyzer extends AbstractAnalyzer
         Map<String, Address> knownVTabAddrs = new HashMap<>();
         Map<Address, Address> gotDataSyms = this.getGotDataSyms(program, elfProvider);
         
+        if (gotDataSyms.isEmpty())
+        {
+            Msg.warn(this, "Failed to locate vtables - No got data symbols found!");
+            return out;
+        }
+        
         Msg.info(this, "Locating IPC vtables...");
         
         // NOTE: We can't get the .<bla> block and check if it contains an address, as there may be multiple
@@ -137,32 +143,33 @@ public class IPCAnalyzer extends AbstractAnalyzer
         {
             MemoryBlock vtBlock = mem.getBlock(vtAddr);
             
+            // vtables are only found in the data block
+            if (vtBlock == null || !vtBlock.getName().equals(".data"))
+                continue;
+            
             try
             {
-                if (vtBlock != null && vtBlock.getName().equals(".data"))
+                Address rttiAddr = aSpace.getAddress(mem.getLong(vtAddr.add(8)));
+                MemoryBlock rttiBlock = mem.getBlock(rttiAddr);
+                
+                // RTTI is only found in the data block
+                if (rttiBlock == null || !rttiBlock.getName().equals(".data"))
+                    continue;
+
+                Address thisAddr = aSpace.getAddress(mem.getLong(rttiAddr.add(0x8)));
+                MemoryBlock thisBlock = mem.getBlock(thisAddr);
+                
+                if (thisBlock == null || thisBlock.getName().equals(".rodata"))
+                    continue;
+
+                String symbol = elfProvider.getReader().readTerminatedString(thisAddr.getOffset(), '\0');
+
+                if (symbol.isEmpty() || symbol.length() > 512)
+                    continue;
+
+                if (symbol.contains("UnmanagedServiceObject") || symbol.equals("N2nn2sf4cmif6server23CmifServerDomainManager6DomainE"))
                 {
-                    Address rttiAddr = aSpace.getAddress(mem.getLong(vtAddr.add(8)));
-                    MemoryBlock rttiBlock = mem.getBlock(rttiAddr);
-                    
-                    if (rttiBlock != null && rttiBlock.getName().equals(".data"))
-                    {
-                        Address thisAddr = aSpace.getAddress(mem.getLong(rttiAddr.add(0x8)));
-                        MemoryBlock thisBlock = mem.getBlock(thisAddr);
-                        
-                        if (thisBlock != null && thisBlock.getName().equals(".rodata"))
-                        {
-                            String symbol = elfProvider.getReader().readTerminatedString(thisAddr.getOffset(), '\0');
-                            
-                            if (symbol.isEmpty() || symbol.length() > 512)
-                                continue;
-                            
-                            if (symbol.contains("UnmanagedServiceObject") || symbol.equals("N2nn2sf4cmif6server23CmifServerDomainManager6DomainE"))
-                            {
-                                knownVTabAddrs.put(symbol, vtAddr);
-                                Msg.info(this, String.format("Service sym %s at 0x%X", symbol, thisAddr.getOffset()));
-                            }
-                        }
-                    }
+                    knownVTabAddrs.put(symbol, vtAddr);
                 }
             }
             catch (MemoryAccessException e) // Skip entries with out of bounds offsets
@@ -172,8 +179,11 @@ public class IPCAnalyzer extends AbstractAnalyzer
         }
         
         if (knownVTabAddrs.isEmpty())
+        {
+            Msg.warn(this, "Failed to locate vtables - No known addresses found!");
             return out;
-        
+        }
+            
         // All IServiceObjects share a common non-overridable virtual function at vt + 0x20
         // and thus that value can be used to distinguish a virtual table vs a non-virtual table.
         // Here we locate the address of that function.
@@ -285,7 +295,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             // There must be either 1 unique function without repeats, or more than one unique function with repeats allowed
             if (uniqueAddrs.size() <= 1 && implAddrs.size() != 1)
             {
-                Msg.info(this, String.format("Insufficient unique addresses for vtable at 0x%X", vtAddr.getOffset()));
+                Msg.warn(this, String.format("Insufficient unique addresses for vtable at 0x%X", vtAddr.getOffset()));
                 
                 for (Address addr : uniqueAddrs)
                 {
@@ -299,7 +309,9 @@ public class IPCAnalyzer extends AbstractAnalyzer
             // Let's shorten these.
             String shortName = shortenIpcSymbol(name);
             
-            out.add(new IPCVTableEntry(name, shortName, vtAddr, implAddrs));
+            var entry = new IPCVTableEntry(name, shortName, vtAddr, implAddrs);
+            Msg.info(this, String.format("VTable Entry: %s @ 0x%X", entry.abvName, entry.addr.getOffset()));
+            out.add(entry);
         }
         
         return out;
@@ -543,6 +555,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     if (entry.fullName != entry.abvName)
                         program.getListing().setComment(entry.addr, CodeUnit.REPEATABLE_COMMENT, entry.fullName);
                     
+                    Msg.info(this, String.format("Creating label for %s @ 0x%X", entry.abvName, entry.addr.getOffset()));
                     program.getSymbolTable().createLabel(entry.addr, entry.abvName, null, SourceType.IMPORTED);
                 }
                 
@@ -684,7 +697,6 @@ public class IPCAnalyzer extends AbstractAnalyzer
             return this.gotDataSyms;
         
         Address baseAddr = program.getImageBase();
-        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
         gotDataSyms = new HashMap<Address, Address>();
         
         for (NXRelocation reloc : elfProvider.getRelocations()) 
