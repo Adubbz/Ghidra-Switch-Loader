@@ -60,7 +60,10 @@ dependencies {
     compile configurations.localDeps
 }
 
-task buildExtension (type: Zip, overwrite: true) {
+buildExtension.enabled = false
+defaultTasks 'createDistribution'
+
+task createDistribution (type: Zip) {
     baseName "${project.name}-${project.version}-${getGitHash()}-Ghidra_${ghidra_version}".replace(' ', '_')
     extension 'zip'
     destinationDir DISTRIBUTION_DIR
