@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghidra: ["9.0.1", "9.0.2", "9.0.4", "9.1", "9.1.1", "9.1.2", "9.2"]
+        ghidra: ["9.1", "9.1.1", "9.1.2"]
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-java@v1
