@@ -124,7 +124,7 @@ public class MemoryBlockHelper
     
     public void flushLog()
     {
-        if (this.log.getMsgCount() > 0)
+        if (this.log.hasMessages())
         {
             Msg.info(this, this.log.toString());
             this.log.clear();
