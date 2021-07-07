@@ -55,18 +55,18 @@ configurations {
 }
 
 dependencies {
-    compile fileTree(dir: ghidraInstallDir + '/Ghidra/Processors', include: "**/*.jar")
+    api fileTree(dir: ghidraInstallDir + '/Ghidra/Processors', include: "**/*.jar")
     localDeps group: 'org.lz4', name: 'lz4-java', version: '1.5.1'
-    compile configurations.localDeps
+    api configurations.localDeps
 }
 
 buildExtension.enabled = false
 defaultTasks 'createDistribution'
 
 task createDistribution (type: Zip) {
-    baseName "${project.name}-${project.version}-${getGitHash()}-Ghidra_${ghidra_version}".replace(' ', '_')
-    extension 'zip'
-    destinationDir DISTRIBUTION_DIR
+    archiveBaseName = "${project.name}-${project.version}-${getGitHash()}-Ghidra_${ghidra_version}".replace(' ', '_')
+    archiveExtension = 'zip'
+    destinationDirectory = DISTRIBUTION_DIR
     version ''
     
     // Make sure that we don't try to copy the same file with the same path into the
