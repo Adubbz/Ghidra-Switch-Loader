@@ -40,7 +40,11 @@ def PATH_IN_ZIP = "${project.name}"
 def getGitHash = {
     def stdout = new ByteArrayOutputStream()
     exec {
-        commandLine 'git', 'rev-parse', '--short', 'HEAD'
+        if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+            commandLine 'cmd', '/c', 'git', 'rev-parse', '--short', 'HEAD'
+        } else {
+            commandLine 'git', 'rev-parse', '--short', 'HEAD'
+        }
         standardOutput = stdout
     }
     return stdout.toString().trim()
@@ -68,11 +72,11 @@ task createDistribution (type: Zip) {
     archiveExtension = 'zip'
     destinationDirectory = DISTRIBUTION_DIR
     version ''
-    
+
     // Make sure that we don't try to copy the same file with the same path into the
     // zip (this can happen!)
     duplicatesStrategy 'exclude'
-    
+
     // This filtered property file copy must appear before the general 
     // copy to ensure that it is prefered over the unmodified file
     File propFile = new File(project.projectDir, "extension.properties")
@@ -83,7 +87,7 @@ task createDistribution (type: Zip) {
         filter (ReplaceTokens, tokens: [extname: name])
         into PATH_IN_ZIP
     }
-    
+
     from (project.jar) {
         into PATH_IN_ZIP + "/lib"
     }
@@ -92,7 +96,7 @@ task createDistribution (type: Zip) {
     from (configurations.localDeps) {
         into PATH_IN_ZIP + "/lib"
     }
-        
+
     from (project.projectDir) {
         exclude 'build/**'
         exclude '*.gradle'
@@ -110,7 +114,7 @@ task createDistribution (type: Zip) {
         exclude 'developer_scripts'
         exclude '.antProperties.xml'
         exclude 'eclipse/**'
-        
+
         into PATH_IN_ZIP
     }
 
