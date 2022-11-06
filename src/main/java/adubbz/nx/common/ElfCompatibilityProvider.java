@@ -17,19 +17,10 @@ import java.util.List;
 import java.util.Set;
 
 import adubbz.nx.util.FullMemoryByteProvider;
-import adubbz.nx.util.LegacyFactoryBundledWithBinaryReader;
-import generic.continues.RethrowContinuesFactory;
+import adubbz.nx.util.LegacyBinaryReader;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
-import ghidra.app.util.bin.format.elf.ElfDynamic;
-import ghidra.app.util.bin.format.elf.ElfDynamicTable;
-import ghidra.app.util.bin.format.elf.ElfDynamicType;
-import ghidra.app.util.bin.format.elf.ElfHeader;
-import ghidra.app.util.bin.format.elf.ElfSectionHeader;
-import ghidra.app.util.bin.format.elf.ElfStringTable;
-import ghidra.app.util.bin.format.elf.ElfSymbol;
-import ghidra.app.util.bin.format.elf.ElfSymbolTable;
+import ghidra.app.util.bin.format.elf.*;
 import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
 import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
@@ -43,7 +34,7 @@ public class ElfCompatibilityProvider
 {
     private Program program;
     private ByteProvider provider;
-    private FactoryBundledWithBinaryReader factoryReader;
+    private BinaryReader binaryReader;
     boolean isAarch32;
     
     private ElfHeader dummyElfHeader;
@@ -60,9 +51,13 @@ public class ElfCompatibilityProvider
     {
         this.program = program;
         this.provider = provider;
-        this.factoryReader = new LegacyFactoryBundledWithBinaryReader(RethrowContinuesFactory.INSTANCE, this.provider, true);
+        this.binaryReader = new LegacyBinaryReader(this.provider, true);
         this.isAarch32 = isAarch32;
-        this.dummyElfHeader = new DummyElfHeader(isAarch32);
+        try {
+            this.dummyElfHeader = new DummyElfHeader(isAarch32);
+        } catch (ElfException e) {
+            Msg.error(this, "Couldn't construct DummyElfHeader", e);
+        }
     }
     
     public ElfCompatibilityProvider(Program program, boolean isAarch32)
@@ -81,7 +76,7 @@ public class ElfCompatibilityProvider
         
         try
         {
-            this.dynamicTable = ElfDynamicTable.createDynamicTable(this.factoryReader, this.dummyElfHeader, dynamic.getStart().getOffset(), dynamic.getStart().getOffset());
+            this.dynamicTable = new ElfDynamicTable(this.binaryReader, this.dummyElfHeader, dynamic.getStart().getOffset(), dynamic.getStart().getOffset());
         }
         catch (IOException e)
         {
@@ -106,10 +101,10 @@ public class ElfCompatibilityProvider
             long dynamicStringTableAddr = this.program.getImageBase().getOffset() + dynamicTable.getDynamicValue(ElfDynamicType.DT_STRTAB);
             long dynamicStringTableSize = dynamicTable.getDynamicValue(ElfDynamicType.DT_STRSZ);
     
-            this.stringTable = ElfStringTable.createElfStringTable(this.factoryReader, this.dummyElfHeader,
+            this.stringTable = new ElfStringTable(this.dummyElfHeader,
                     null, dynamicStringTableAddr, dynamicStringTableAddr, dynamicStringTableSize);
         }
-        catch (IOException | NotFoundException e)
+        catch (NotFoundException e)
         {
             Msg.error(this, "Failed to create string table", e);
         }
@@ -135,7 +130,7 @@ public class ElfCompatibilityProvider
             {
                 try 
                 {
-                    this.dynamicLibraryNames[i] = stringTable.readString(this.factoryReader, needed[i].getValue());
+                    this.dynamicLibraryNames[i] = stringTable.readString(this.binaryReader, needed[i].getValue());
                 }
                 catch (Exception e) 
                 {
@@ -166,14 +161,14 @@ public class ElfCompatibilityProvider
             long symbolTableOff = dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMTAB) + this.program.getImageBase().getOffset();
             long symbolEntrySize = dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMENT);
             long dtHashOff = dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
-            long nchain = this.factoryReader.readUnsignedInt(this.program.getImageBase().getOffset() + dtHashOff + 4);
+            long nchain = this.binaryReader.readUnsignedInt(this.program.getImageBase().getOffset() + dtHashOff + 4);
             long symbolTableSize = nchain * symbolEntrySize;
             
-            Method m = ElfSymbolTable.class.getDeclaredMethod("createElfSymbolTable", FactoryBundledWithBinaryReader.class, ElfHeader.class, ElfSectionHeader.class, long.class, long.class, 
+            Method m = ElfSymbolTable.class.getDeclaredMethod("createElfSymbolTable", BinaryReader.class, ElfHeader.class, ElfSectionHeader.class, long.class, long.class,
                     long.class, long.class, ElfStringTable.class, boolean.class);
             m.setAccessible(true);
             
-            symbolTable = (ElfSymbolTable)m.invoke(null, this.factoryReader, this.dummyElfHeader, null,
+            symbolTable = (ElfSymbolTable)m.invoke(null, this.binaryReader, this.dummyElfHeader, null,
                     symbolTableOff,
                     symbolTableOff,
                     symbolTableSize,
@@ -276,17 +271,17 @@ public class ElfCompatibilityProvider
             // and all 64-bit ones do.
             if (this.isAarch32)
             {
-                offset = this.factoryReader.readInt(base + rel + i * 0x8);
-                info = this.factoryReader.readInt(base + rel + i * 0x8 + 4);
+                offset = this.binaryReader.readInt(base + rel + i * 0x8);
+                info = this.binaryReader.readInt(base + rel + i * 0x8 + 4);
                 addend = 0;
                 r_type = info & 0xff;
                 r_sym = info >> 8;
             }
             else
             {
-                offset = this.factoryReader.readLong(base + rel + i * 0x18);
-                info = this.factoryReader.readLong(base + rel + i * 0x18 + 8);
-                addend = this.factoryReader.readLong(base + rel + i * 0x18 + 0x10);
+                offset = this.binaryReader.readLong(base + rel + i * 0x18);
+                info = this.binaryReader.readLong(base + rel + i * 0x18 + 8);
+                addend = this.binaryReader.readLong(base + rel + i * 0x18 + 0x10);
                 r_type = info & 0xffffffffL;
                 r_sym = info >> 32;
             }
@@ -316,7 +311,7 @@ public class ElfCompatibilityProvider
     
     public BinaryReader getReader()
     {
-        return this.factoryReader;
+        return this.binaryReader;
     }
     
     // Fake only what is needed for an elf dynamic table
@@ -325,8 +320,9 @@ public class ElfCompatibilityProvider
         boolean isAarch32;
         private HashMap<Integer, ElfDynamicType> dynamicTypeMap;
         
-        public DummyElfHeader(boolean isAarch32)
-        {
+        public DummyElfHeader(boolean isAarch32) throws ElfException {
+            super(ByteProvider.EMPTY_BYTEPROVIDER, s -> {});
+
             this.isAarch32 = isAarch32;
             dynamicTypeMap = new HashMap<>();
             ElfDynamicType.addDefaultTypes(this.dynamicTypeMap);
@@ -337,6 +333,9 @@ public class ElfCompatibilityProvider
                 extensionAdapter.addDynamicTypes(this.dynamicTypeMap);
             }
         }
+
+        @Override
+        protected void initElfHeader() { }
         
         @Override
         protected HashMap<Integer, ElfDynamicType> getDynamicTypeMap() 

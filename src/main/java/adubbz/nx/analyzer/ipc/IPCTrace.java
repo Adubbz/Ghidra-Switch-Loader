@@ -42,11 +42,8 @@ public class IPCTrace
         {
             return true;
         }
-        
-        if (vtOffset == -1)
-            return false;
-        
-        return true;
+
+        return vtOffset != -1;
     }
     
     public void printTrace()

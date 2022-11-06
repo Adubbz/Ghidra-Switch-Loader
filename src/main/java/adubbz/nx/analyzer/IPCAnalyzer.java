@@ -40,7 +40,6 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.address.AddressSpace;
-import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Data;
@@ -162,7 +161,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 if (thisBlock == null || thisBlock.getName().equals(".rodata"))
                     continue;
 
-                String symbol = elfProvider.getReader().readTerminatedString(thisAddr.getOffset(), '\0');
+                String symbol = elfProvider.getReader().readAsciiString(thisAddr.getOffset());
 
                 if (symbol.isEmpty() || symbol.length() > 512)
                     continue;
@@ -253,7 +252,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     
                     if (thisBlock != null && thisBlock.getName().equals(".rodata"))
                     {
-                        String symbol = elfProvider.getReader().readTerminatedString(thisAddr.getOffset(), '\0');
+                        String symbol = elfProvider.getReader().readAsciiString(thisAddr.getOffset());
                         
                         if (!symbol.isEmpty() && symbol.length() <= 512)
                         {
@@ -328,7 +327,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         for (NXRelocation reloc : elfProvider.getRelocations()) 
         {
             if (reloc.addend > 0)
-                candidates.add(new Pair(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
+                candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
         }
         
         candidates.sort((a, b) -> a.first.compareTo(b.first));
@@ -810,7 +809,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             {
                 d = program.getListing().createData(address, PointerDataType.dataType, 8);
             } 
-            catch (CodeUnitInsertionException | DataTypeConflictException e) 
+            catch (CodeUnitInsertionException e)
             {
                 Msg.error(this, String.format("Failed to create pointer at 0x%X", address.getOffset()), e);
             }
