@@ -69,7 +69,7 @@ public class ElfCompatibilityProvider
     {
         if (this.dynamicTable != null)
             return this.dynamicTable;
-        
+
         MemoryBlock dynamic = this.getDynamicBlock();
         
         if (dynamic == null) return null;
@@ -164,18 +164,14 @@ public class ElfCompatibilityProvider
             long nchain = this.binaryReader.readUnsignedInt(this.program.getImageBase().getOffset() + dtHashOff + 4);
             long symbolTableSize = nchain * symbolEntrySize;
             
-            Method m = ElfSymbolTable.class.getDeclaredMethod("createElfSymbolTable", BinaryReader.class, ElfHeader.class, ElfSectionHeader.class, long.class, long.class,
-                    long.class, long.class, ElfStringTable.class, boolean.class);
-            m.setAccessible(true);
-            
-            symbolTable = (ElfSymbolTable)m.invoke(null, this.binaryReader, this.dummyElfHeader, null,
+            symbolTable = new ElfSymbolTable(this.binaryReader, this.dummyElfHeader, null,
                     symbolTableOff,
                     symbolTableOff,
                     symbolTableSize,
                     symbolEntrySize,
-                    stringTable, true);
+                    stringTable, null, true);
         }
-        catch (NoSuchMethodException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | NotFoundException | IOException e)
+        catch (IllegalArgumentException | NotFoundException | IOException e)
         {
             Msg.error(this, "Failed to create symbol table", e);
         }
@@ -254,7 +250,7 @@ public class ElfCompatibilityProvider
     
     private Set<Long> processRelocations(List<NXRelocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
     {
-        Set<Long> locations = new HashSet<Long>();
+        Set<Long> locations = new HashSet<>();
         int relocSize = this.isAarch32 ? 0x8 : 0x18;
         
         for (long i = 0; i < relsz / relocSize; i++) 
@@ -336,9 +332,9 @@ public class ElfCompatibilityProvider
 
         @Override
         protected void initElfHeader() { }
-        
+
         @Override
-        protected HashMap<Integer, ElfDynamicType> getDynamicTypeMap() 
+        protected HashMap<Integer, ElfDynamicType> getDynamicTypeMap()
         {
             return this.dynamicTypeMap;
         }

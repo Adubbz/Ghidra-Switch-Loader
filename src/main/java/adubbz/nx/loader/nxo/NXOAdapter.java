@@ -8,13 +8,13 @@ package adubbz.nx.loader.nxo;
 
 import java.io.IOException;
 
+import adubbz.nx.util.LegacyByteProviderWrapper;
 import com.google.common.collect.ImmutableList;
 
 import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.NXRelocation;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.ByteProviderWrapper;
 import ghidra.app.util.bin.format.elf.ElfDynamicTable;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbolTable;
@@ -131,8 +131,8 @@ public abstract class NXOAdapter
         {
             Msg.error(this, "Failed to get memory provider length", e);
         }
-        
-        this.elfProvider = new ElfCompatibilityProvider(program, new ByteProviderWrapper(this.getMemoryProvider(), -baseAddress, memoryProviderLength), this.isAarch32());
+
+        this.elfProvider = new ElfCompatibilityProvider(program, new LegacyByteProviderWrapper(this.getMemoryProvider(), -baseAddress, memoryProviderLength), this.isAarch32());
         
         return this.elfProvider;
     }
