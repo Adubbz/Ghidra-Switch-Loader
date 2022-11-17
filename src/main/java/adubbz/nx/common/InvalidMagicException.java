@@ -6,10 +6,8 @@
  */
 package adubbz.nx.common;
 
-public class InvalidMagicException extends RuntimeException 
+public class InvalidMagicException extends RuntimeException
 {
-    private static final long serialVersionUID = 1L;
-
     public InvalidMagicException(String magic)
     {
         super(String.format("Invalid %s magic!", magic));

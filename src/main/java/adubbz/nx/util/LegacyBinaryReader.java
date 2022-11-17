@@ -22,7 +22,7 @@ public class LegacyBinaryReader extends BinaryReader
     @Override
     public String readAsciiString(long index) throws IOException 
     {
-        StringBuffer buffer = new StringBuffer();
+        StringBuilder builder = new StringBuilder();
         while (true) {
             if (index == this.getByteProvider().length()) {
                 // reached the end of the bytes and found no non-ascii data
@@ -30,12 +30,12 @@ public class LegacyBinaryReader extends BinaryReader
             }
             byte b = this.getByteProvider().readByte(index++);
             if ((b >= 32) && (b <= 126)) {
-                buffer.append((char) b);
+                builder.append((char) b);
             }
             else {
                 break;
             }
         }
-        return buffer.toString().trim();
+        return builder.toString().trim();
     }
 }

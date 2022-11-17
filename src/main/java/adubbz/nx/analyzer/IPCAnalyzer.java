@@ -7,12 +7,7 @@
 package adubbz.nx.analyzer;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.apache.commons.compress.utils.Lists;
@@ -84,7 +79,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
     }
 
     @Override
-    public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) throws CancelledException 
+    public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
     {
         Memory memory = program.getMemory();
         MemoryBlock text = memory.getBlock(".text");
@@ -268,7 +263,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             Map<Address, Address> gotDataSyms = this.getGotDataSyms(program, elfProvider);
             List<Address> implAddrs = new ArrayList<>();
             long funcVtOff = 0x30;
-            long funcOff = 0;
+            long funcOff;
             
             // Find all ipc impl functions in the vtable
             while ((funcOff = mem.getLong(vtAddr.add(funcVtOff))) != 0)
@@ -283,13 +278,13 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 }
                 else break;
             
-                if (gotDataSyms.values().contains(vtAddr.add(funcVtOff)))
+                if (gotDataSyms.containsValue(vtAddr.add(funcVtOff)))
                 {
                     break;
                 }
             }
             
-            Set<Address> uniqueAddrs = new HashSet<Address>(implAddrs);
+            Set<Address> uniqueAddrs = new HashSet<>(implAddrs);
             
             // There must be either 1 unique function without repeats, or more than one unique function with repeats allowed
             if (uniqueAddrs.size() <= 1 && implAddrs.size() != 1)
@@ -330,7 +325,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
         }
         
-        candidates.sort((a, b) -> a.first.compareTo(b.first));
+        candidates.sort(Comparator.comparing(a -> a.first));
         
         
         // 5.x: match on the "SFCI" constant used in the template of s_Table
@@ -437,7 +432,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         {
             List<IPCTrace> traces = Lists.newArrayList(map.get(procFuncAddr).iterator());
             
-            traces.sort((a, b) -> ((Long)a.cmdId).compareTo(b.cmdId));
+            traces.sort(Comparator.comparingLong(a -> a.cmdId));
             
             for (IPCTrace trace : traces)
             {
@@ -457,7 +452,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         for (Address procFuncAddr : procFuncAddrs)
         {
             // We've already found this address. No need to do it again
-            if (out.keySet().contains(procFuncAddr))
+            if (out.containsKey(procFuncAddr))
                 continue;
             
             List<IPCVTableEntry> filteredPossibilities = possibilities.stream().filter(vtEntry -> vtEntry.ipcFuncs.size() == getProcFuncVTableSize(processFuncTraces, procFuncAddr)).collect(Collectors.toList());
@@ -485,7 +480,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             // Iterate over all the possible vtables with a size greater than our current process function
             for (IPCVTableEntry filteredPossibility : filteredPossibilities)
             {
-                List<Address> unlocatedProcFuncAddrs = procFuncAddrs.stream().filter(pFAddr -> !out.keySet().contains(pFAddr)).collect(Collectors.toList());
+                List<Address> unlocatedProcFuncAddrs = procFuncAddrs.stream().filter(pFAddr -> !out.containsKey(pFAddr)).toList();
                 
                 // See if there is only a single trace set of size <= this vtable
                 // For example, if the process func vtable size is found by emulation to be 0x100, and we have previously found vtables of the following sizes, which have yet to be located:
@@ -493,7 +488,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 // We will run this loop for both 0x110 and 0x230. 
                 // In the case of 0x110, we will then filter for sizes <= 0x110. These are 0x10, 0x20, 0x60 and 0x110
                 // As there are four of these, the check will fail.
-                if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getProcFuncVTableSize(processFuncTraces, unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).collect(Collectors.toList()).size() == 1)
+                if (unlocatedProcFuncAddrs.stream().filter(unlocatedProcFuncAddr -> getProcFuncVTableSize(processFuncTraces, unlocatedProcFuncAddr) <= filteredPossibility.ipcFuncs.size()).count() == 1)
                 {
                     out.put(procFuncAddr, filteredPossibility);
                     possibilities.remove(filteredPossibility);
@@ -502,7 +497,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             }
         }
         
-        List<Address> unlocatedProcFuncAddrs = procFuncAddrs.stream().filter(pFAddr -> !out.keySet().contains(pFAddr)).collect(Collectors.toList());
+        List<Address> unlocatedProcFuncAddrs = procFuncAddrs.stream().filter(pFAddr -> !out.containsKey(pFAddr)).toList();
         
         for (Address addr : unlocatedProcFuncAddrs)
         {
@@ -551,7 +546,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 if (!this.hasImportedSymbol(program, entry.addr))
                 {
                     // For shortened names, leave a comment so the user knows what the original name is
-                    if (entry.fullName != entry.abvName)
+                    if (!entry.fullName.equals(entry.abvName))
                         program.getListing().setComment(entry.addr, CodeUnit.REPEATABLE_COMMENT, entry.fullName);
                     
                     Msg.info(this, String.format("Creating label for %s @ 0x%X", entry.abvName, entry.addr.getOffset()));
@@ -566,24 +561,13 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     
                     // Set vtable func data types to pointers
                     this.createPointer(program, vtAddr);
-                    
-                    switch (i)
-                    {
-                        case 0:
-                            name = "AddReference";
-                            break;
-                            
-                        case 1:
-                            name = "Release";
-                            break;
-                            
-                        case 2:
-                            name = "GetProxyInfo";
-                            break;
-                            
-                        case 3: // Shared by everything
-                            name = "nn::sf::IServiceObject::GetInterfaceTypeInfo";
-                            break;
+
+                    switch (i) {
+                        case 0 -> name = "AddReference";
+                        case 1 -> name = "Release";
+                        case 2 -> name = "GetProxyInfo";
+                        // Shared by everything
+                        case 3 -> name = "nn::sf::IServiceObject::GetInterfaceTypeInfo";
                     }
                              
                     if (i == 3) // For now, only label GetInterfaceTypeInfo. We need better heuristics for the others as they may be shared.
@@ -605,7 +589,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     String name = null;
     
                     // Set vtable func data types to pointers
-                    this.createPointer(program, entry.addr.add(0x30 + i * 0x8));
+                    this.createPointer(program, entry.addr.add(0x30 + i * 0x8L));
                 }
                 
                 for (IPCTrace trace : ipcTraces)
@@ -620,15 +604,16 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     if (!this.hasImportedSymbol(program, ipcCmdImplAddr))
                         program.getSymbolTable().createLabel(ipcCmdImplAddr, String.format("%s::Cmd%d", entryNameNoSuffix, trace.cmdId), null, SourceType.IMPORTED);
                     
-                    String implComment = ""         +
-                            "IPC INFORMATION\n"       +
-                            "Bytes In:       0x%X\n"  +
-                            "Bytes Out:      0x%X\n"  +
-                            "Buffer Count:   0x%X\n"  +
-                            "In Interfaces:  0x%X\n"  +
-                            "Out Interfaces: 0x%X\n"  +
-                            "In Handles:     0x%X\n"  +
-                            "Out Handles:    0x%X";
+                    String implComment = """
+                            IPC INFORMATION
+                            Bytes In:       0x%X
+                            Bytes Out:      0x%X
+                            Buffer Count:   0x%X
+                            In Interfaces:  0x%X
+                            Out Interfaces: 0x%X
+                            In Handles:     0x%X
+                            Out Handles:    0x%X
+                            """;
                     
                     implComment = String.format(implComment, trace.bytesIn, trace.bytesOut, trace.bufferCount, trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles);
                     program.getListing().setComment(ipcCmdImplAddr, CodeUnit.PLATE_COMMENT, implComment);
@@ -696,7 +681,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             return this.gotDataSyms;
         
         Address baseAddr = program.getImageBase();
-        gotDataSyms = new HashMap<Address, Address>();
+        gotDataSyms = new HashMap<>();
         
         for (NXRelocation reloc : elfProvider.getRelocations()) 
         {

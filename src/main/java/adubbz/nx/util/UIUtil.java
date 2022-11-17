@@ -39,25 +39,24 @@ public class UIUtil
         {
             sortModule(programTreeModule);
         } 
-        catch (NotFoundException e) 
+        catch (NotFoundException ignored)
         {
         }
     }
     
     private static void sortModule(ProgramModule parent) throws NotFoundException
     {
-        List<Group> list = new ArrayList<Group>();
+        List<Group> list = new ArrayList<>();
         Group[] kids = parent.getChildren();
 
-        for (int i = 0; i < kids.length; i++) 
-        {
-            list.add(kids[i]);
-            if (kids[i] instanceof ProgramModule) {
-                sortModule((ProgramModule) kids[i]);
+        for (Group kid : kids) {
+            list.add(kid);
+            if (kid instanceof ProgramModule) {
+                sortModule((ProgramModule) kid);
             }
         }
 
-        Collections.sort(list, ADDR_COMPARATOR);
+        list.sort(ADDR_COMPARATOR);
 
         for (int i = 0; i < list.size(); i++) 
         {
@@ -80,8 +79,8 @@ public class UIUtil
         {
             if (sortType == SORT_BY_ADDRESS) 
             {
-                Address addr1 = null;
-                Address addr2 = null;
+                Address addr1;
+                Address addr2;
                 if (g1 instanceof ProgramFragment) {
                     addr1 = ((ProgramFragment) g1).getMinAddress();
                 }

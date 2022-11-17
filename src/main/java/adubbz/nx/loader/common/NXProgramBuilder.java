@@ -214,8 +214,7 @@ public class NXProgramBuilder
         }
     }
     
-    protected void setupRelocations() throws AddressOverflowException, AddressOutOfBoundsException, IOException, NotFoundException, CodeUnitInsertionException
-    {
+    protected void setupRelocations() throws AddressOutOfBoundsException, NotFoundException, IOException {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
         BinaryReader memoryReader = adapter.getMemoryReader();
@@ -285,7 +284,7 @@ public class NXProgramBuilder
         this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
     }
     
-    protected void createGlobalOffsetTable() throws AddressOverflowException, AddressOutOfBoundsException, IOException
+    protected void createGlobalOffsetTable() throws AddressOutOfBoundsException
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
@@ -408,7 +407,7 @@ public class NXProgramBuilder
         long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
         
         // Create the block where imports will be located
-        this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
+        this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), (long) this.undefSymbolCount * undefEntrySize);
 
         // Handle imported symbols
         if (adapter.getSymbolTable(this.program) != null)

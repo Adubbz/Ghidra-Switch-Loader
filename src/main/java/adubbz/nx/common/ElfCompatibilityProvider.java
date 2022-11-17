@@ -7,8 +7,6 @@
 package adubbz.nx.common;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -196,8 +194,8 @@ public class ElfCompatibilityProvider
             {
                 Msg.info(this, "Processing JMPREL relocations...");
                 this.processRelocations(this.pltRelocs, symbolTable,
-                        (long)dynamicTable.getDynamicValue(ElfDynamicType.DT_JMPREL),
-                        (long)dynamicTable.getDynamicValue(ElfDynamicType.DT_PLTRELSZ));
+                        dynamicTable.getDynamicValue(ElfDynamicType.DT_JMPREL),
+                        dynamicTable.getDynamicValue(ElfDynamicType.DT_PLTRELSZ));
     
                 this.pltRelocs.sort(Comparator.comparing(reloc -> reloc.offset));
             }
@@ -227,16 +225,16 @@ public class ElfCompatibilityProvider
             {
                 Msg.info(this, "Processing DT_REL relocations...");
                 processRelocations(this.relocs, this.symbolTable,
-                        (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_REL),
-                        (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELSZ));
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_REL),
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELSZ));
             }
             
             if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELA)) 
             {
                 Msg.info(this, "Processing DT_RELA relocations...");
                 processRelocations(this.relocs, this.symbolTable,
-                        (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELA),
-                        (long)this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELASZ));
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELA),
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELASZ));
             }
         }
         catch (NotFoundException | IOException e)

@@ -67,7 +67,7 @@ public class MemoryBlockHelper
             newBlockName = name + "." + nameCounter; 
         }
         
-        Msg.info(this, "Adding unique section " + newBlockName + " from " + startAddr + " to " + endAddr.toString());
+        Msg.info(this, "Adding unique section " + newBlockName + " from " + startAddr + " to " + endAddr);
         this.addSection(newBlockName, offset, offset, length, read, write, execute);
     }
     

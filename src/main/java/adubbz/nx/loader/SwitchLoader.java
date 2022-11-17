@@ -125,7 +125,7 @@ public class SwitchLoader extends BinaryLoader
             }
         }
 
-        List<LoadedProgram> results = new ArrayList<LoadedProgram>();
+        List<LoadedProgram> results = new ArrayList<>();
         if (prog != null) results.add(new LoadedProgram(prog, programFolder));
         return results;
     }
