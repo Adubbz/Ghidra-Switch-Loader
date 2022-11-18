@@ -67,7 +67,7 @@ public class MemoryBlockHelper
             newBlockName = name + "." + nameCounter; 
         }
         
-        Msg.info(this, "Adding unique section " + newBlockName + " from " + startAddr.toString() + " to " + endAddr.toString());
+        Msg.info(this, "Adding unique section " + newBlockName + " from " + startAddr + " to " + endAddr);
         this.addSection(newBlockName, offset, offset, length, read, write, execute);
     }
     
@@ -92,7 +92,7 @@ public class MemoryBlockHelper
         
         if (blocksInRange.isEmpty())
         {
-            Msg.info(this, "Adding filler section " + name + " from " + startAddr.toString() + " to " + endAddr.toString());
+            Msg.info(this, "Adding filler section " + name + " from " + startAddr + " to " + endAddr);
             this.addSection(name, addressOffset, addressOffset, range.getLength(), read, write, execute);
             return;
         }

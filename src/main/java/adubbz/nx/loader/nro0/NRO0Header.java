@@ -74,20 +74,12 @@ public class NRO0Header
 
     public NRO0SectionHeader getSectionHeader(NXOSectionType type)
     {
-        switch (type)
-        {
-            case TEXT:
-                return this.textHeader;
-    
-            case RODATA:
-                return this.rodataHeader;
-    
-            case DATA:
-                return this.dataHeader;
-    
-            default:
-                return null;
-        }
+        return switch (type) {
+            case TEXT -> this.textHeader;
+            case RODATA -> this.rodataHeader;
+            case DATA -> this.dataHeader;
+            default -> null;
+        };
     }
 
     public int getBssSize()

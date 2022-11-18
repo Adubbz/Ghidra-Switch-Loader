@@ -131,7 +131,7 @@ public class IPCEmulator
         
         this.bTable = new BreakTableCallBack(this.sLang);
         this.emu = new Emulate(this.sLang, this.state, this.bTable);
-        this.disassembler = Disassembler.getDisassembler(this.program, TaskMonitorAdapter.DUMMY_MONITOR, null);
+        this.disassembler = Disassembler.getDisassembler(this.program, TaskMonitorAdapter.DUMMY, null);
         
         // Copy over our binary to the emulator's memory, typically 7100000000
         Memory programMemory = this.program.getMemory();

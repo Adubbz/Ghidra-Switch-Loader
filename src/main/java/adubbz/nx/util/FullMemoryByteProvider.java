@@ -19,7 +19,7 @@ public class FullMemoryByteProvider extends MemoryByteProvider
     }
     
     @Override
-    public long length() throws IOException 
+    public long length()
     {
         return memory.getMaxAddress().getOffset();
     }

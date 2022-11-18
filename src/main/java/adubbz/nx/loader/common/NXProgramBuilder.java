@@ -32,13 +32,11 @@ import ghidra.app.util.bin.format.elf.ElfSymbol;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
 import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationConstants;
 import ghidra.app.util.importer.MessageLog;
-import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
-import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
 import ghidra.program.model.listing.Data;
@@ -157,7 +155,7 @@ public class NXProgramBuilder
                 }
             }
         }
-        catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | DataTypeConflictException | MemoryAccessException | InvalidInputException e)
+        catch (IOException | NotFoundException | AddressOverflowException | AddressOutOfBoundsException | CodeUnitInsertionException | MemoryAccessException | InvalidInputException e)
         {
             e.printStackTrace();
         }
@@ -172,7 +170,7 @@ public class NXProgramBuilder
         return this.nxo;
     }
     
-    protected void setupStringTable() throws AddressOverflowException, CodeUnitInsertionException, DataTypeConflictException
+    protected void setupStringTable() throws AddressOverflowException, CodeUnitInsertionException
     {
        NXOAdapter adapter = this.nxo.getAdapter();
        ElfStringTable stringTable = adapter.getStringTable(this.program);
@@ -216,8 +214,7 @@ public class NXProgramBuilder
         }
     }
     
-    protected void setupRelocations() throws AddressOverflowException, AddressOutOfBoundsException, IOException, NotFoundException, CodeUnitInsertionException, DataTypeConflictException
-    {
+    protected void setupRelocations() throws AddressOutOfBoundsException, NotFoundException, IOException {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
         BinaryReader memoryReader = adapter.getMemoryReader();
@@ -287,7 +284,7 @@ public class NXProgramBuilder
         this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
     }
     
-    protected void createGlobalOffsetTable() throws AddressOverflowException, AddressOutOfBoundsException, IOException
+    protected void createGlobalOffsetTable() throws AddressOutOfBoundsException
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
@@ -410,7 +407,7 @@ public class NXProgramBuilder
         long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
         
         // Create the block where imports will be located
-        this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), this.undefSymbolCount * undefEntrySize);
+        this.createExternalBlock(this.aSpace.getAddress(externalBlockAddrOffset), (long) this.undefSymbolCount * undefEntrySize);
 
         // Handle imported symbols
         if (adapter.getSymbolTable(this.program) != null)
@@ -502,7 +499,7 @@ public class NXProgramBuilder
         return entryAddress;
     }
     
-    protected int createString(Address address) throws CodeUnitInsertionException, DataTypeConflictException 
+    protected int createString(Address address) throws CodeUnitInsertionException
     {
         Data d = this.program.getListing().getDataAt(address);
         
@@ -514,7 +511,7 @@ public class NXProgramBuilder
         return d.getLength();
     }
     
-    protected int createPointer(Address address) throws CodeUnitInsertionException, DataTypeConflictException
+    protected int createPointer(Address address) throws CodeUnitInsertionException
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         Data d = this.program.getListing().getDataAt(address);

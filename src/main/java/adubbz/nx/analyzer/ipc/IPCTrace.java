@@ -42,28 +42,28 @@ public class IPCTrace
         {
             return true;
         }
-        
-        if (vtOffset == -1)
-            return false;
-        
-        return true;
+
+        return vtOffset != -1;
     }
     
     public void printTrace()
     {
-        String out = "\n--------------------\n"+
-                     "0x%X, Cmd 0x%X      \n"  +
-                     "--------------------\n"  +
-                     "Lr:             0x%X\n"  +
-                     "Vt:             0x%X\n"  +
-                     "Bytes In:       0x%X\n"  +
-                     "Bytes Out:      0x%X\n"  +
-                     "Buffer Count:   0x%X\n"  +
-                     "In Interfaces:  0x%X\n"  +
-                     "Out Interfaces: 0x%X\n"  +
-                     "In Handles:     0x%X\n"  +
-                     "Out Handles:    0x%X\n"  +
-                     "--------------------\n";
+        String out = """
+
+                --------------------
+                0x%X, Cmd 0x%X     \s
+                --------------------
+                Lr:             0x%X
+                Vt:             0x%X
+                Bytes In:       0x%X
+                Bytes Out:      0x%X
+                Buffer Count:   0x%X
+                In Interfaces:  0x%X
+                Out Interfaces: 0x%X
+                In Handles:     0x%X
+                Out Handles:    0x%X
+                --------------------
+                """;
         
         out = String.format(out, procFuncAddr, cmdId, lr, vtOffset, bytesIn, bytesOut, bufferCount, inInterfaces,
                             outInterfaces, inHandles, outHandles);

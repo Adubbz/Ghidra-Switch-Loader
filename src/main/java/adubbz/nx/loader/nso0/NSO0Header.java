@@ -71,59 +71,32 @@ public class NSO0Header
     
     public NSO0SectionHeader getSectionHeader(NXOSectionType type)
     {
-        switch (type)
-        {
-            case TEXT:
-                return this.textHeader;
-                
-            case RODATA:
-                return this.rodataHeader;
-                
-            case DATA:
-                return this.dataHeader;
-        
-            default:
-                return null;
-        }
+        return switch (type) {
+            case TEXT -> this.textHeader;
+            case RODATA -> this.rodataHeader;
+            case DATA -> this.dataHeader;
+            default -> null;
+        };
     }
     
     public long getSectionFileOffset(NXOSectionType type)
     {
-        switch (type)
-        {
-            case TEXT:
-                return this.textHeader.getFileOffset();
-                
-            case RODATA:
-                return this.rodataHeader.getFileOffset();
-                
-            case DATA:
-                return this.dataHeader.getFileOffset();
-        
-            default:
-                return 0;
-        }
+        return switch (type) {
+            case TEXT -> this.textHeader.getFileOffset();
+            case RODATA -> this.rodataHeader.getFileOffset();
+            case DATA -> this.dataHeader.getFileOffset();
+            default -> 0;
+        };
     }
     
     public int getCompressedSectionSize(NXOSectionType type)
     {
-        switch (type)
-        {
-            case TEXT:
-                return this.compressedTextSize;
-                
-            case RODATA:
-                return this.compressedRodataSize;
-                
-            case DATA:
-                return this.compressedDataSize;
-                
-            case BSS:
-                return this.bssSize;
-        
-            default:
-                return 0;
-        }
+        return switch (type) {
+            case TEXT -> this.compressedTextSize;
+            case RODATA -> this.compressedRodataSize;
+            case DATA -> this.compressedDataSize;
+            case BSS -> this.bssSize;
+        };
     }
     
     public boolean isSectionCompressed(NXOSectionType type)

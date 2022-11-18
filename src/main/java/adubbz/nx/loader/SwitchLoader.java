@@ -99,9 +99,9 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    protected List<Program> loadProgram(ByteProvider provider, String programName,
-            DomainFolder programFolder, LoadSpec loadSpec, List<Option> options, MessageLog log,
-            Object consumer, TaskMonitor monitor)
+    protected List<LoadedProgram> loadProgram(ByteProvider provider, String programName,
+                                              DomainFolder programFolder, LoadSpec loadSpec, List<Option> options, MessageLog log,
+                                              Object consumer, TaskMonitor monitor)
                     throws IOException, CancelledException 
     {
         LanguageCompilerSpecPair pair = loadSpec.getLanguageCompilerSpec();
@@ -125,8 +125,8 @@ public class SwitchLoader extends BinaryLoader
             }
         }
 
-        List<Program> results = new ArrayList<Program>();
-        if (prog != null) results.add(prog);
+        List<LoadedProgram> results = new ArrayList<>();
+        if (prog != null) results.add(new LoadedProgram(prog, programFolder));
         return results;
     }
 
@@ -191,7 +191,7 @@ public class SwitchLoader extends BinaryLoader
         return SWITCH_NAME;
     }
 
-    private static enum BinaryType
+    private enum BinaryType
     {
         KIP1("Kernel Initial Process", KIP1Adapter::new),
         NSO0("Nintendo Shared Object", NSO0Adapter::new), 
@@ -202,7 +202,7 @@ public class SwitchLoader extends BinaryLoader
         public final String name;
         private final BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc;
         
-        private BinaryType(String name, BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc)
+        BinaryType(String name, BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc)
         {
             this.name = name;
             this.adapterFunc = adapterFunc;

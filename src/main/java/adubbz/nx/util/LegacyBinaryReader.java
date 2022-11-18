@@ -8,22 +8,21 @@ package adubbz.nx.util;
 
 import java.io.IOException;
 
-import generic.continues.GenericFactory;
+import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.format.FactoryBundledWithBinaryReader;
 
-public class LegacyFactoryBundledWithBinaryReader extends FactoryBundledWithBinaryReader 
+public class LegacyBinaryReader extends BinaryReader
 {
-    public LegacyFactoryBundledWithBinaryReader(GenericFactory factory, ByteProvider provider, boolean isLittleEndian) 
+    public LegacyBinaryReader(ByteProvider provider, boolean isLittleEndian)
     {
-        super(factory, provider, isLittleEndian);
+        super(provider, isLittleEndian);
     }
 
     // readAsciiString no longer works correctly as of Ghidra 9.1. Here we revert back to the old version
     @Override
     public String readAsciiString(long index) throws IOException 
     {
-        StringBuffer buffer = new StringBuffer();
+        StringBuilder builder = new StringBuilder();
         while (true) {
             if (index == this.getByteProvider().length()) {
                 // reached the end of the bytes and found no non-ascii data
@@ -31,12 +30,12 @@ public class LegacyFactoryBundledWithBinaryReader extends FactoryBundledWithBina
             }
             byte b = this.getByteProvider().readByte(index++);
             if ((b >= 32) && (b <= 126)) {
-                buffer.append((char) b);
+                builder.append((char) b);
             }
             else {
                 break;
             }
         }
-        return buffer.toString().trim();
+        return builder.toString().trim();
     }
 }

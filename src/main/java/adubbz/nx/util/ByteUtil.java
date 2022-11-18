@@ -24,7 +24,7 @@ public class ByteUtil
         int compressedOffset = compressedAndHeaderSize - headerSize;
         int outOffset = compressedAndHeaderSize + uncompressedAdditionalSize;
         
-        byte out[] = new byte[decompressedSize];
+        byte[] out = new byte[decompressedSize];
         System.arraycopy(compressed, 0, out, 0, compressed.length);
         
         while (outOffset > 0)
