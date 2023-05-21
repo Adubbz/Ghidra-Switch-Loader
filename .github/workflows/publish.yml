@@ -2,9 +2,17 @@ name: Publish release artifacts
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release git tag
+        type: string
+        required: true
   push:
     tags:
       - '*'
+
+permissions:
+  contents: write
 
 jobs:
   build_and_publish:
@@ -25,10 +33,21 @@ jobs:
         with:
           gradle-version: 7.5
           arguments: -PGHIDRA_INSTALL_DIR=${{ env.GHIDRA_INSTALL_DIR }}
+
       - uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'push'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/SwitchLoader-*.zip
           tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
+
+      - uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/SwitchLoader-*.zip
+          tag: ${{ inputs.tag }}
           overwrite: true
           file_glob: true
