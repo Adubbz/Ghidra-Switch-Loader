@@ -27,7 +27,7 @@ import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.BinaryLoader;
 import ghidra.app.util.opinion.LoadSpec;
 import ghidra.app.util.opinion.LoaderTier;
-import ghidra.framework.model.DomainFolder;
+import ghidra.framework.model.Project;
 import ghidra.framework.store.LockException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOutOfBoundsException;
@@ -38,6 +38,7 @@ import ghidra.program.model.lang.Language;
 import ghidra.program.model.lang.LanguageCompilerSpecPair;
 import ghidra.program.model.lang.LanguageID;
 import ghidra.program.model.listing.Program;
+import ghidra.app.util.opinion.Loaded;
 import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -99,10 +100,7 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    protected List<LoadedProgram> loadProgram(ByteProvider provider, String programName,
-                                              DomainFolder programFolder, LoadSpec loadSpec, List<Option> options, MessageLog log,
-                                              Object consumer, TaskMonitor monitor)
-                    throws IOException, CancelledException 
+    protected List<Loaded<Program>> loadProgram(ByteProvider provider, String programName, Project project, String programFolderPath, LoadSpec loadSpec, List<Option> options, MessageLog log, Object consumer, TaskMonitor monitor) throws IOException, CancelledException
     {
         LanguageCompilerSpecPair pair = loadSpec.getLanguageCompilerSpec();
         Language importerLanguage = getLanguageService().getLanguage(pair.languageID);
@@ -112,26 +110,27 @@ public class SwitchLoader extends BinaryLoader
         Program prog = createProgram(provider, programName, baseAddr, getName(), importerLanguage, importerCompilerSpec, consumer);
         boolean success = false;
 
+        List<Loaded<Program>> results;
+
         try 
         {
-            success = this.loadInto(provider, loadSpec, options, log, prog, monitor);
+            this.loadInto(provider, loadSpec, options, log, prog, monitor);
+            success = true;
+            results = List.of(new Loaded<>(prog, programName, programFolderPath));
         }
         finally 
         {
             if (!success) 
             {
                 prog.release(consumer);
-                prog = null;
             }
         }
 
-        List<LoadedProgram> results = new ArrayList<>();
-        if (prog != null) results.add(new LoadedProgram(prog, programFolder));
         return results;
     }
 
     @Override
-    protected boolean loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options,
+    protected void loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options,
             MessageLog messageLog, Program program, TaskMonitor monitor) 
                     throws IOException
     {
@@ -169,8 +168,6 @@ public class SwitchLoader extends BinaryLoader
             // KIP1s always start with a branch instruction at the start of their text
             loader.createEntryFunction("entry", program.getImageBase().getOffset(), monitor);
         }
-        
-        return true;
     }
 
     @Override

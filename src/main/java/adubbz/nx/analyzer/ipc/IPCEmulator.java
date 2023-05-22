@@ -6,13 +6,6 @@
  */
 package adubbz.nx.analyzer.ipc;
 
-import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-
-import org.apache.commons.compress.utils.Lists;
-
 import adubbz.nx.util.ByteUtil;
 import ghidra.app.plugin.processors.sleigh.SleighLanguage;
 import ghidra.app.util.bin.BinaryReader;
@@ -21,10 +14,7 @@ import ghidra.pcode.emulate.BreakCallBack;
 import ghidra.pcode.emulate.BreakTableCallBack;
 import ghidra.pcode.emulate.Emulate;
 import ghidra.pcode.error.LowlevelError;
-import ghidra.pcode.memstate.MemoryBank;
-import ghidra.pcode.memstate.MemoryFaultHandler;
-import ghidra.pcode.memstate.MemoryPageBank;
-import ghidra.pcode.memstate.MemoryState;
+import ghidra.pcode.memstate.*;
 import ghidra.pcode.utils.Utils;
 import ghidra.program.database.ProgramDB;
 import ghidra.program.database.code.CodeManager;
@@ -42,6 +32,12 @@ import ghidra.util.Msg;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidra.util.task.TaskMonitorAdapter;
+import org.apache.commons.compress.utils.Lists;
+
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class IPCEmulator 
 {
@@ -121,7 +117,7 @@ public class IPCEmulator
         };
         
         this.sLang = (SleighLanguage)this.program.getLanguage();
-        this.state = new MemoryState(this.sLang);
+        this.state = new DefaultMemoryState(this.sLang);
         
         // Create banks for ram and registers and add them to our state
         this.ramBank = new MemoryPageBank(this.sLang.getAddressFactory().getDefaultAddressSpace(), false, 4096, faultHandler);
