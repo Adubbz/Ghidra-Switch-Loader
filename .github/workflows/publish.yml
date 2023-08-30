@@ -1,15 +1,6 @@
 name: Publish release artifacts
 
-on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release git tag
-        type: string
-        required: true
-  push:
-    tags:
-      - '*'
+on: [ push, workflow_dispatch ]
 
 permissions:
   contents: write
@@ -19,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghidra: [ "10.3" ]
+        ghidra: [ "10.3.3" ]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-java@v3
@@ -33,21 +24,15 @@ jobs:
         with:
           gradle-version: 7.5
           arguments: -PGHIDRA_INSTALL_DIR=${{ env.GHIDRA_INSTALL_DIR }}
-
-      - uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'push'
+      - uses: actions/upload-artifact@v3
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/SwitchLoader-*.zip
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
-
-      - uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'workflow_dispatch'
+          name: Ghidra-Switch-Loader_${{ matrix.ghidra }}
+          path: dist/*.zip
+      - uses: ncipollo/release-action@v1
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/SwitchLoader-*.zip
-          tag: ${{ inputs.tag }}
-          overwrite: true
-          file_glob: true
+          artifacts: "dist/*.zip"
+          tag: ${{ github.sha }}
+          allowUpdates: true
+          artifactErrorsFailBuild: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
