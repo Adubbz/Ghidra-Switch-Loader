@@ -1,6 +1,12 @@
 name: Publish release artifacts
 
-on: [ push, workflow_dispatch ]
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release git tag
+        type: string
+        required: true
 
 permissions:
   contents: write
@@ -31,7 +37,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         with:
           artifacts: "dist/*.zip"
-          tag: ${{ github.sha }}
+          tag: ${{ inputs.tag }}
           allowUpdates: true
           artifactErrorsFailBuild: false
           prerelease: false
