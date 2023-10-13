@@ -47,6 +47,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static adubbz.nx.common.ElfCompatibilityProvider.R_FAKE_RELR;
+
 public class NXProgramBuilder 
 {
     protected ByteProvider fileByteProvider;
@@ -95,6 +97,7 @@ public class NXProgramBuilder
             this.tryCreateDynBlock(".fini_array", ElfDynamicType.DT_FINI_ARRAY, ElfDynamicType.DT_FINI_ARRAYSZ);
             this.tryCreateDynBlock(".rela.dyn", ElfDynamicType.DT_RELA, ElfDynamicType.DT_RELASZ);
             this.tryCreateDynBlock(".rel.dyn", ElfDynamicType.DT_REL, ElfDynamicType.DT_RELSZ);
+            this.tryCreateDynBlock(".relr.dyn", ElfDynamicType.DT_RELR, ElfDynamicType.DT_RELRSZ);
             
             if (adapter.isAarch32())
             {
@@ -266,10 +269,16 @@ public class NXProgramBuilder
                     this.pltEntries.add(new PltEntry(off, target));
             }
         }
-        
-        long pltStart = this.pltEntries.get(0).off;
-        long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
-        this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
+
+        if (!this.pltEntries.isEmpty()) {
+            long pltStart = this.pltEntries.get(0).off;
+            long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
+            this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
+        }
+        else {
+            // TODO: Find a way to locate the plt in CFI-enabled binaries.
+            Msg.error(this, "No PLT entries found, does this binary have CFI enabled? This loader currently can't locate the plt in them.");
+        }
     }
     
     protected void createGlobalOffsetTable() throws AddressOutOfBoundsException
@@ -337,7 +346,16 @@ public class NXProgramBuilder
             else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_RELATIVE) 
             {
                 program.getMemory().setLong(target, this.nxo.getBaseAddress() + reloc.addend);
-            } 
+            }
+            else if (reloc.r_type == R_FAKE_RELR) {
+                if (this.nxo.getAdapter().isAarch32()) {
+                    // TODO: Add RELRO support for 32-bit
+                    Msg.error(this, "TODO: RELRO support for 32-bit");
+                    continue;
+                }
+
+                program.getMemory().setLong(target, this.nxo.getBaseAddress() + originalValue);
+            }
             else 
             {
                 Msg.info(this, String.format("TODO: r_type 0x%x", reloc.r_type));
