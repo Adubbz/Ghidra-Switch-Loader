@@ -341,7 +341,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         
         try
         {
-            for (long off = text.getStart().getOffset(); off < text.getEnd().getOffset(); off += 0x4)
+            for (long off = text.getStart().getOffset(); off < text.getEnd().getOffset() - 0x4; off += 0x4)
             {
                 long val1 = (elfProvider.getReader().readUnsignedInt(off) & 0xFFFFFF00L) >> 8;
                 long val2 = (elfProvider.getReader().readUnsignedInt(off + 0x4) & 0xFFFFFF00L) >> 8;
