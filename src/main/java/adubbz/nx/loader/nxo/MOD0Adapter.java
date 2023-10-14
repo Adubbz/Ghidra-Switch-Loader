@@ -127,7 +127,7 @@ public abstract class MOD0Adapter extends NXOAdapter
         boolean good = false;
         List<Long> relocationOffsets = this.getRelocations(program).stream().map(reloc -> reloc.offset).toList();
         MemoryBlock gotPlt = this.program.getMemory().getBlock(".got.plt");
-        long gotStart = gotPlt != null ? gotPlt.getEnd().getOffset() : this.getDynamicOffset() + this.getDynamicSize();
+        long gotStart = gotPlt != null ? gotPlt.getEnd().getOffset() + 1 - this.program.getImageBase().getOffset() : this.getDynamicOffset() + this.getDynamicSize();
         long gotEnd = gotStart + this.getOffsetSize();
         long initArrayValue;
 
@@ -149,6 +149,7 @@ public abstract class MOD0Adapter extends NXOAdapter
             return true;
         }
 
+        Msg.error(this, "Failed to find .got section.");
         return false;
     }
     
