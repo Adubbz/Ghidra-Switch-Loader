@@ -684,9 +684,15 @@ public class IPCAnalyzer extends AbstractAnalyzer
         
         Address baseAddr = program.getImageBase();
         gotDataSyms = new HashMap<>();
+        MemoryBlock gotBlock = program.getMemory().getBlock(".got");
         
         for (NXRelocation reloc : elfProvider.getRelocations()) 
         {
+            if (baseAddr.add(reloc.offset).getOffset() < gotBlock.getStart().getOffset() || baseAddr.add(reloc.offset).getOffset() > gotBlock.getEnd().getOffset() + 1)
+            {
+                continue;
+            }
+
             long off;
 
             if (reloc.r_type == R_FAKE_RELR) {
