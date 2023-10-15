@@ -6,21 +6,20 @@
  */
 package adubbz.nx.loader.nxo;
 
-import java.io.IOException;
-
 import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.InvalidMagicException;
-import adubbz.nx.common.NXRelocation;
 import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.format.elf.ElfDynamic;
-import ghidra.app.util.bin.format.elf.ElfDynamicTable;
 import ghidra.app.util.bin.format.elf.ElfDynamicType;
 import ghidra.app.util.bin.format.elf.ElfException;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;
 import ghidra.util.exception.NotFoundException;
+
+import java.io.IOException;
+import java.util.List;
 
 /*
  * An adapter implementation for binaries with a MOD0 section.
@@ -102,91 +101,75 @@ public abstract class MOD0Adapter extends NXOAdapter
         
         return mod0.getBssSize();
     }
+
+    private long gotOffset = 0;
+    private long gotSize = 0;
+
+    private boolean findGot() {
+        assert this.program != null;
+
+        if (this.gotOffset > 0 && this.gotSize > 0) {
+            return true;
+        }
+
+        MOD0Header mod0 = this.getMOD0();
+
+        if (mod0 == null) {
+            return false;
+        }
+
+        if (mod0.hasLibnxExtension()) {
+            this.gotOffset = mod0.getLibnxGotStart() + this.program.getImageBase().getOffset();
+            this.gotSize = mod0.getLibnxGotEnd() - mod0.getLibnxGotStart();
+            return true;
+        }
+
+        boolean good = false;
+        List<Long> relocationOffsets = this.getRelocations(program).stream().map(reloc -> reloc.offset).toList();
+        MemoryBlock gotPlt = this.program.getMemory().getBlock(".got.plt");
+        long gotStart = gotPlt != null ? gotPlt.getEnd().getOffset() + 1 - this.program.getImageBase().getOffset() : this.getDynamicOffset() + this.getDynamicSize();
+        long gotEnd = gotStart + this.getOffsetSize();
+        long initArrayValue;
+
+        try {
+            initArrayValue = this.getDynamicTable(program).getDynamicValue(ElfDynamicType.DT_INIT_ARRAY);
+        } catch (NotFoundException ignored) {
+            initArrayValue = -1;
+        }
+
+        while ((relocationOffsets.contains(gotEnd) || (gotPlt == null && initArrayValue != -1 && gotEnd < initArrayValue))
+                && (initArrayValue == -1 || gotEnd < initArrayValue || gotStart > initArrayValue)) {
+            good = true;
+            gotEnd += this.getOffsetSize();
+        }
+
+        if (good) {
+            this.gotOffset = this.program.getImageBase().getOffset() + gotStart;
+            this.gotSize = gotEnd - gotStart;
+            return true;
+        }
+
+        Msg.error(this, "Failed to find .got section.");
+        return false;
+    }
     
     @Override
     public long getGotOffset()
     {
-        MOD0Header mod0 = this.getMOD0();
-        
-        if (mod0 == null)
-            return 0;
-        
-        if (mod0.hasLibnxExtension())
-        {
-            return mod0.getLibnxGotStart() + this.program.getImageBase().getOffset();
+        if (this.findGot()) {
+            return this.gotOffset;
         }
-        
-        MemoryBlock gotPlt = this.program.getMemory().getBlock(".got.plt");
-        
-        if (gotPlt == null)
-            return 0;
-        
-        return gotPlt.getEnd().getOffset() + 1;
+
+        return 0;
     }
-    
-    private long gotSize = 0;
     
     @Override
     public long getGotSize()
     {
-        assert this.program != null;
-        
-        if (this.gotSize > 0)
-            return this.gotSize;
-        
-        MOD0Header mod0 = this.getMOD0();
-        
-        if (mod0 == null)
-            return 0;
-        
-        if (mod0.hasLibnxExtension())
-        {
-            this.gotSize = mod0.getLibnxGotEnd() - mod0.getLibnxGotStart();
+        if (this.findGot()) {
             return this.gotSize;
         }
-        
-        ElfDynamicTable dt = this.getDynamicTable(this.program);
-        long baseAddr = this.program.getImageBase().getOffset();
-        long gotEnd = this.getGotOffset() + this.getOffsetSize();
-        boolean good = false;
-        
-        if (dt == null || gotEnd == this.getOffsetSize())
-            return 0;
-        
-        try 
-        {
-            while (!dt.containsDynamicValue(ElfDynamicType.DT_INIT_ARRAY) || gotEnd < (baseAddr + dt.getDynamicValue(ElfDynamicType.DT_INIT_ARRAY)))
-            {
-                boolean foundOffset = false;
-                
-                for (NXRelocation reloc : this.getRelocations(this.program))
-                {
-                    if ((baseAddr + reloc.offset) == gotEnd)
-                    {
-                        foundOffset = true;
-                        break;
-                    }
-                }
-                
-                if (!foundOffset)
-                    break;
-                
-                good = true;
-                gotEnd += this.getOffsetSize();
-            }
-        } 
-        catch (NotFoundException e) 
-        {
-            Msg.error(this, "Failed to get got size", e);
-            return 0;
-        }
-        
-        if (good)
-        {
-            this.gotSize = gotEnd - this.getGotOffset();
-            return this.gotSize;
-        }
-        
+
         return 0;
     }
     

@@ -6,23 +6,14 @@
  */
 package adubbz.nx.analyzer;
 
-import java.io.IOException;
-import java.util.*;
-import java.util.stream.Collectors;
-
-import org.apache.commons.compress.utils.Lists;
-import org.python.google.common.collect.HashBiMap;
-import org.python.google.common.collect.Sets;
-
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Multimap;
-
 import adubbz.nx.analyzer.ipc.IPCEmulator;
 import adubbz.nx.analyzer.ipc.IPCTrace;
 import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.NXRelocation;
 import adubbz.nx.loader.SwitchLoader;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Multimap;
 import generic.stl.Pair;
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalyzerType;
@@ -47,9 +38,17 @@ import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
-import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
+import org.apache.commons.compress.utils.Lists;
+import org.python.google.common.collect.HashBiMap;
+import org.python.google.common.collect.Sets;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static adubbz.nx.common.ElfCompatibilityProvider.R_FAKE_RELR;
 
 public class IPCAnalyzer extends AbstractAnalyzer 
 {
@@ -311,8 +310,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         return out;
     }
     
-    protected HashBiMap<Address, Address> locateSTables(Program program, ElfCompatibilityProvider elfProvider)
-    {
+    protected HashBiMap<Address, Address> locateSTables(Program program, ElfCompatibilityProvider elfProvider) throws MemoryAccessException {
         HashBiMap<Address, Address> out = HashBiMap.create();
         List<Pair<Long, Long>> candidates = new ArrayList<>();
         AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
@@ -321,8 +319,13 @@ public class IPCAnalyzer extends AbstractAnalyzer
         
         for (NXRelocation reloc : elfProvider.getRelocations()) 
         {
-            if (reloc.addend > 0)
+            if (reloc.addend > 0) {
                 candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
+            }
+            else if (reloc.r_type == R_FAKE_RELR) {
+                reloc.addend = mem.getLong(baseAddr.add(reloc.offset)) - baseAddr.getOffset();
+                candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
+            }
         }
         
         candidates.sort(Comparator.comparing(a -> a.first));
@@ -338,7 +341,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         
         try
         {
-            for (long off = text.getStart().getOffset(); off < text.getEnd().getOffset(); off += 0x4)
+            for (long off = text.getStart().getOffset(); off < text.getEnd().getOffset() - 0x4; off += 0x4)
             {
                 long val1 = (elfProvider.getReader().readUnsignedInt(off) & 0xFFFFFF00L) >> 8;
                 long val2 = (elfProvider.getReader().readUnsignedInt(off + 0x4) & 0xFFFFFF00L) >> 8;
@@ -675,17 +678,26 @@ public class IPCAnalyzer extends AbstractAnalyzer
     /**
      * A map of relocated entries in the global offset table to their new values.
      */
-    protected Map<Address, Address> getGotDataSyms(Program program, ElfCompatibilityProvider elfProvider)
-    {
+    protected Map<Address, Address> getGotDataSyms(Program program, ElfCompatibilityProvider elfProvider) throws MemoryAccessException {
         if (gotDataSyms != null)
             return this.gotDataSyms;
         
         Address baseAddr = program.getImageBase();
         gotDataSyms = new HashMap<>();
+        MemoryBlock gotBlock = program.getMemory().getBlock(".got");
         
         for (NXRelocation reloc : elfProvider.getRelocations()) 
         {
+            if (baseAddr.add(reloc.offset).getOffset() < gotBlock.getStart().getOffset() || baseAddr.add(reloc.offset).getOffset() > gotBlock.getEnd().getOffset() + 1)
+            {
+                continue;
+            }
+
             long off;
+
+            if (reloc.r_type == R_FAKE_RELR) {
+                reloc.addend = program.getMemory().getLong(baseAddr.add(reloc.offset)) - baseAddr.getOffset();
+            }
             
             if (reloc.sym != null && reloc.sym.getSectionHeaderIndex() != ElfSectionHeaderConstants.SHN_UNDEF && reloc.sym.getValue() == 0)
             {

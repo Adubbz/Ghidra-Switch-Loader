@@ -6,14 +6,6 @@
  */
 package adubbz.nx.common;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import adubbz.nx.util.FullMemoryByteProvider;
 import adubbz.nx.util.LegacyBinaryReader;
 import ghidra.app.util.bin.BinaryReader;
@@ -28,8 +20,13 @@ import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;
 import ghidra.util.exception.NotFoundException;
 
+import java.io.IOException;
+import java.util.*;
+
 public class ElfCompatibilityProvider 
 {
+    public static final int R_FAKE_RELR = -1;
+
     private Program program;
     private ByteProvider provider;
     private BinaryReader binaryReader;
@@ -221,7 +218,7 @@ public class ElfCompatibilityProvider
         
         try
         {
-            if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_REL.value)) 
+            if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_REL))
             {
                 Msg.info(this, "Processing DT_REL relocations...");
                 processRelocations(this.relocs, this.symbolTable,
@@ -236,6 +233,13 @@ public class ElfCompatibilityProvider
                         this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELA),
                         this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELASZ));
             }
+
+            if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELR)) {
+                Msg.info(this, "Processing DT_RELR relocations...");
+                processReadOnlyRelocations(this.relocs,
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELR),
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELRSZ));
+            }
         }
         catch (NotFoundException | IOException e)
         {
@@ -248,12 +252,12 @@ public class ElfCompatibilityProvider
     
     private Set<Long> processRelocations(List<NXRelocation> relocs, ElfSymbolTable symtab, long rel, long relsz) throws IOException 
     {
+        long base = this.program.getImageBase().getOffset();
         Set<Long> locations = new HashSet<>();
         int relocSize = this.isAarch32 ? 0x8 : 0x18;
-        
+
         for (long i = 0; i < relsz / relocSize; i++) 
         {
-            long base = this.program.getImageBase().getOffset();
             long offset;
             long info;
             long addend;
@@ -294,6 +298,39 @@ public class ElfCompatibilityProvider
                 locations.add(offset);
             }
             relocs.add(new NXRelocation(offset, r_sym, r_type, sym, addend));
+        }
+        return locations;
+    }
+
+    private Set<Long> processReadOnlyRelocations(List<NXRelocation> relocs, long relr, long relrsz) throws IOException
+    {
+        long base = this.program.getImageBase().getOffset();
+        Set<Long> locations = new HashSet<>();
+        int relocSize = 0x8;
+
+        long where = 0;
+        for (long entryNumber = 0; entryNumber < relrsz / relocSize; entryNumber++)
+        {
+            long entry = this.binaryReader.readLong(base + relr + entryNumber * relocSize);
+
+            if ((entry & 1) != 0) {
+                entry >>= 1;
+                long i = 0;
+                while (i < (relocSize * 8) - 1) {
+                    if ((entry & (1L << i)) != 0) {
+                        locations.add(where + i * relocSize);
+                        relocs.add(new NXRelocation(where + i * relocSize, 0, R_FAKE_RELR, null, 0));
+                    }
+                    i++;
+                }
+                where += relocSize * ((relocSize * 8) - 1);
+            }
+            else {
+                where = entry;
+                locations.add(where);
+                relocs.add(new NXRelocation(where, 0, R_FAKE_RELR, null, 0));
+                where += relocSize;
+            }
         }
         return locations;
     }
