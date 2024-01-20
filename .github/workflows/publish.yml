@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghidra: [ "10.4" ]
+        ghidra: [ "11.0" ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
