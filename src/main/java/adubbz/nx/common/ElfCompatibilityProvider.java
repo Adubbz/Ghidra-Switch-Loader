@@ -14,8 +14,8 @@ import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.format.elf.*;
 import ghidra.app.util.bin.format.elf.extend.ElfExtensionFactory;
 import ghidra.app.util.bin.format.elf.extend.ElfLoadAdapter;
-import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
-import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationConstants;
+import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationType;
+import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationType;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.util.Msg;
@@ -294,7 +294,7 @@ public class ElfCompatibilityProvider
                 sym = null;
             }
             
-            if (r_type != AARCH64_ElfRelocationConstants.R_AARCH64_TLSDESC && r_type != ARM_ElfRelocationConstants.R_ARM_TLS_DESC)
+            if (r_type != AARCH64_ElfRelocationType.R_AARCH64_TLSDESC.typeId() && r_type != ARM_ElfRelocationType.R_ARM_TLS_DESC.typeId())
             {
                 locations.add(offset);
             }

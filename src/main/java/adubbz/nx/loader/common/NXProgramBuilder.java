@@ -22,8 +22,8 @@ import ghidra.app.util.bin.format.elf.ElfDynamicType;
 import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.bin.format.elf.ElfStringTable;
 import ghidra.app.util.bin.format.elf.ElfSymbol;
-import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationConstants;
-import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationConstants;
+import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationType;
+import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.PointerDataType;
@@ -308,9 +308,9 @@ public class NXProgramBuilder
             Address target = this.aSpace.getAddress(reloc.offset + this.nxo.getBaseAddress());
             long originalValue = adapter.isAarch32() ? this.program.getMemory().getInt(target) : this.program.getMemory().getLong(target);
             
-            if (reloc.r_type == ARM_ElfRelocationConstants.R_ARM_GLOB_DAT ||
-                    reloc.r_type == ARM_ElfRelocationConstants.R_ARM_JUMP_SLOT ||
-                    reloc.r_type == ARM_ElfRelocationConstants.R_ARM_ABS32) 
+            if (reloc.r_type == ARM_ElfRelocationType.R_ARM_GLOB_DAT.typeId() ||
+                    reloc.r_type == ARM_ElfRelocationType.R_ARM_JUMP_SLOT.typeId() ||
+                    reloc.r_type == ARM_ElfRelocationType.R_ARM_ABS32.typeId()) 
                 {
                     if (reloc.sym == null) 
                     {
@@ -321,13 +321,13 @@ public class NXProgramBuilder
                         program.getMemory().setInt(target, (int)(reloc.sym.getValue() + this.nxo.getBaseAddress()));
                     }
                 } 
-            else if (reloc.r_type == ARM_ElfRelocationConstants.R_ARM_RELATIVE)
+            else if (reloc.r_type == ARM_ElfRelocationType.R_ARM_RELATIVE.typeId())
             {
                 program.getMemory().setInt(target, (int)(program.getMemory().getInt(target) + this.nxo.getBaseAddress()));
             }
-            else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_GLOB_DAT ||
-                reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_JUMP_SLOT ||
-                reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_ABS64) 
+            else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_GLOB_DAT.typeId() ||
+                reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_JUMP_SLOT.typeId() ||
+                reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_ABS64.typeId()) 
             {
                 if (reloc.sym == null) 
                 {
@@ -343,7 +343,7 @@ public class NXProgramBuilder
                         gotNameLookup.put(reloc.offset, reloc.sym.getNameAsString());
                 }
             } 
-            else if (reloc.r_type == AARCH64_ElfRelocationConstants.R_AARCH64_RELATIVE) 
+            else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_RELATIVE.typeId()) 
             {
                 program.getMemory().setLong(target, this.nxo.getBaseAddress() + reloc.addend);
             }
