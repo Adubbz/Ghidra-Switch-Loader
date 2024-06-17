@@ -8,8 +8,7 @@ on:
         type: string
         required: true
   push:
-    tags:
-      - '*'
+  pull_request:
 
 permissions:
   contents: write
@@ -35,7 +34,7 @@ jobs:
           arguments: -PGHIDRA_INSTALL_DIR=${{ env.GHIDRA_INSTALL_DIR }}
 
       - uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/SwitchLoader-*.zip
