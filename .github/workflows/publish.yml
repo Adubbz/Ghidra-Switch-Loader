@@ -26,7 +26,7 @@ jobs:
         with:
           distribution: "temurin"
           java-version: "17"
-      - uses: er28-0652/setup-ghidra@master
+      - uses: antoniovazquezblanco/setup-ghidra@v2.0.3
         with:
           version: ${{ matrix.ghidra }}
       - uses: eskatos/gradle-command-action@v3
