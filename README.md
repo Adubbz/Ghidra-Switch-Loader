@@ -4,7 +4,7 @@ A loader for Ghidra supporting a variety of Nintendo Switch file formats.
 
 ## Building
 
-- Ensure you have ``JAVA_HOME`` set to the path of your JDK 17 installation.
+- Ensure you have ``JAVA_HOME`` set to the path of your JDK 21 installation.
 - Set ``GHIDRA_INSTALL_DIR`` to your Ghidra install directory. This can be done in one of the following ways:
   - **Windows**: Running ``set GHIDRA_INSTALL_DIR=<Absolute path to Ghidra without quotations>``
   - **macos/Linux**: Running ``export GHIDRA_INSTALL_DIR=<Absolute path to Ghidra>``
