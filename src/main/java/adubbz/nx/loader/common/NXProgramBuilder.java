@@ -276,7 +276,6 @@ public class NXProgramBuilder
             long pltStart = this.pltEntries.get(0).off;
             long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
             this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
-            // Disassemble the entire section, so AARCH64PltThunkAnalyzer works.
             disassembleRange(program.getImageBase().add(pltStart), program.getImageBase().add(pltEnd), program, monitor);
         }
         else {
