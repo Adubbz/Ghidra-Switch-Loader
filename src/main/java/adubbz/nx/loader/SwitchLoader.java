@@ -131,8 +131,8 @@ public class SwitchLoader extends BinaryLoader
 
     @Override
     protected void loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options,
-            MessageLog messageLog, Program program, TaskMonitor monitor) 
-                    throws IOException
+            MessageLog messageLog, Program program, TaskMonitor monitor)
+                    throws IOException, CancelledException
     {
         var space = program.getAddressFactory().getDefaultAddressSpace();
         

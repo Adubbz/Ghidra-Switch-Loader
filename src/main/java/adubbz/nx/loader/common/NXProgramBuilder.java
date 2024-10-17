@@ -25,6 +25,7 @@ import ghidra.app.util.bin.format.elf.ElfSymbol;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationType;
 import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.program.disassemble.Disassembler;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
@@ -35,6 +36,7 @@ import ghidra.program.model.reloc.Relocation;
 import ghidra.program.model.symbol.*;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
+import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.exception.NotFoundException;
@@ -69,7 +71,7 @@ public class NXProgramBuilder
         this.nxo = new NXO(program, adapter, program.getImageBase().getOffset());
     }
     
-    public void load(TaskMonitor monitor)
+    public void load(TaskMonitor monitor) throws CancelledException
     {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
@@ -117,7 +119,7 @@ public class NXProgramBuilder
                 this.memBlockHelper.addSection(".dynsym", adapter.getSymbolTable(this.program).getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable(this.program).getFileOffset() - this.nxo.getBaseAddress(), adapter.getSymbolTable(this.program).getLength(), true, false, false);
             }
             
-            this.setupRelocations();
+            this.setupRelocations(monitor);
             this.createGlobalOffsetTable();
             
             this.memBlockHelper.addFillerSection(".text", text.getOffset(), text.getSize(), true, false, true);
@@ -205,7 +207,7 @@ public class NXProgramBuilder
         }
     }
     
-    protected void setupRelocations() throws AddressOutOfBoundsException, NotFoundException, IOException {
+    protected void setupRelocations(TaskMonitor monitor) throws AddressOutOfBoundsException, NotFoundException, IOException, CancelledException {
         NXOAdapter adapter = this.nxo.getAdapter();
         ByteProvider memoryProvider = adapter.getMemoryProvider();
         BinaryReader memoryReader = adapter.getMemoryReader();
@@ -274,6 +276,8 @@ public class NXProgramBuilder
             long pltStart = this.pltEntries.get(0).off;
             long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
             this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
+            // Disassemble the entire section, so AARCH64PltThunkAnalyzer works.
+            disassembleRange(program.getImageBase().add(pltStart), program.getImageBase().add(pltEnd), program, monitor);
         }
         else {
             // TODO: Find a way to locate the plt in CFI-enabled binaries.
@@ -382,12 +386,15 @@ public class NXProgramBuilder
         {
             if (gotNameLookup.containsKey(entry.target))
             {
-                long addr = this.nxo.getBaseAddress() + entry.off;
+                Address addr = this.aSpace.getAddress(this.nxo.getBaseAddress() + entry.off);
                 String name = gotNameLookup.get(entry.target);
-                // TODO: Mark as func
                 if (name != null && !name.isEmpty())
                 {
-                    this.createSymbol(this.aSpace.getAddress(addr), name, false, false, null);
+                    Function func = createOneByteFunction(name, addr, false);
+                    ExternalLocation extLoc = program.getExternalManager().getUniqueExternalLocation(Library.UNKNOWN, name);
+                    if (extLoc != null) {
+                        func.setThunkedFunction(extLoc.getFunction());
+                    }
                 }
             }
         }
@@ -641,6 +648,28 @@ public class NXProgramBuilder
             sym.setPinned(true);
         }
         return sym;
+    }
+
+    // Source: https://github.com/NationalSecurityAgency/ghidra/blob/de7c3eaee2a4bc993a402e371b039c2bb2d6c545/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDefaultGotPltMarkup.java#L545
+    private void disassembleRange(Address start, Address end, Program program, TaskMonitor monitor)
+            throws CancelledException {
+        AddressSet set = new AddressSet(start, end);
+        Disassembler disassembler = Disassembler.getDisassembler(program, monitor, m -> {
+            /* silent */});
+        while (!set.isEmpty()) {
+            monitor.checkCancelled();
+            AddressSet disset = disassembler.disassemble(set.getMinAddress(), null, true);
+            if (disset.isEmpty()) {
+                // Stop on first error but discard error bookmark since
+                // some plt sections are partly empty and must rely
+                // on normal flow disassembly during analysis
+                program.getBookmarkManager()
+                        .removeBookmarks(set, BookmarkType.ERROR,
+                                Disassembler.ERROR_BOOKMARK_CATEGORY, monitor);
+                break;//we did not disassemble anything...
+            }
+            set.delete(disset);
+        }
     }
     
     private Symbol checkPrimary(Symbol sym) 
