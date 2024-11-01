@@ -25,6 +25,7 @@ import ghidra.app.util.bin.format.elf.ElfSymbol;
 import ghidra.app.util.bin.format.elf.relocation.AARCH64_ElfRelocationType;
 import ghidra.app.util.bin.format.elf.relocation.ARM_ElfRelocationType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.disassemble.Disassembler;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.PointerDataType;
@@ -276,7 +277,7 @@ public class NXProgramBuilder
             long pltStart = this.pltEntries.get(0).off;
             long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
             this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
-            // Disassemble the entire section, so AARCH64PltThunkAnalyzer works.
+            // Disassemble the entire section, so AARCH64PltThunkAnalyzer works for functions within this binary.
             disassembleRange(program.getImageBase().add(pltStart), program.getImageBase().add(pltEnd), program, monitor);
         }
         else {
@@ -390,10 +391,31 @@ public class NXProgramBuilder
                 String name = gotNameLookup.get(entry.target);
                 if (name != null && !name.isEmpty())
                 {
-                    Function func = createOneByteFunction(name, addr, false);
                     ExternalLocation extLoc = program.getExternalManager().getUniqueExternalLocation(Library.UNKNOWN, name);
+                    // AARCH64PltThunkAnalyzer won't be able to find a valid destination address for entries referencing external functions.
                     if (extLoc != null) {
-                        func.setThunkedFunction(extLoc.getFunction());
+                        Address lastAddr = addr.add(0x10 - 0x4);
+                        Instruction lastInstruction = program.getListing().getInstructionAt(lastAddr);
+
+                        // Make sure the last instruction of this function is a branch.
+                        // This check is also performed by AARCH64PltThunkAnalyzer.
+                        if (lastInstruction != null && lastInstruction.getMnemonicString().equals("br")) {
+                            try {
+                                program.getFunctionManager().createThunkFunction(name, null, addr, new AddressSet(addr, lastAddr), extLoc.getFunction(), SourceType.IMPORTED);
+                                lastInstruction.setFlowOverride(FlowOverride.CALL_RETURN);
+                            } catch (OverlappingFunctionException e) {
+                                Msg.error(this, String.format("Couldn't create thunk function at %s: %s", addr, e));
+                            }
+                        }
+                        else {
+                            // This shouldn't happen.
+                            Msg.warn(this, String.format("Couldn't find a valid last instruction for thunk function %s at: %s", addr, lastAddr));
+                            createOneByteFunction(name, addr, false).setThunkedFunction(extLoc.getFunction());
+                        }
+                    }
+                    else {
+                        // Already defined functions are skipped by AARCH64PltThunkAnalyzer, so we only create a symbol.
+                        this.createSymbol(addr, name, false, false, null);
                     }
                 }
             }
