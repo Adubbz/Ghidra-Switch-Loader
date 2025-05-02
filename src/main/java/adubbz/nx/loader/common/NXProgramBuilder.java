@@ -410,7 +410,7 @@ public class NXProgramBuilder
                 lastAddrOff = block.getEnd().getOffset();
         }
         
-        int undefEntrySize = adapter.getOffsetSize(); // We create fake 1 byte functions for imports
+        int undefEntrySize = 0x1000; // We create fake 0x1000 regions for each import
         long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
         
         // Create the block where imports will be located
