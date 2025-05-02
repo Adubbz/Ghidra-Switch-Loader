@@ -430,7 +430,8 @@ public class NXProgramBuilder
                         Field elfSymbolValue = elfSymbol.getClass().getDeclaredField("st_value");
                         elfSymbolValue.setAccessible(true);
                         // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
-                        elfSymbolValue.set(elfSymbol, externalBlockAddrOffset);
+                        // make the symbol value relative to the image base, as that's how all other symbols are stored
+                        elfSymbolValue.set(elfSymbol, externalBlockAddrOffset - this.nxo.getBaseAddress());
                     } catch (NoSuchFieldException | IllegalAccessException e) {
                         Msg.error(this, "Couldn't find or set st_value field in ElfSymbol.", e);
                     }
