@@ -410,7 +410,7 @@ public class NXProgramBuilder
                 lastAddrOff = block.getEnd().getOffset();
         }
         
-        int undefEntrySize = adapter.getOffsetSize(); // We create fake 1 byte functions for imports
+        int undefEntrySize = 0x1000; // We create fake 0x1000 regions for each import
         long externalBlockAddrOffset = ((lastAddrOff + 0xFFF) & ~0xFFF) + undefEntrySize; // plus 1 so we don't end up on the "end" symbol
         
         // Create the block where imports will be located
@@ -430,7 +430,8 @@ public class NXProgramBuilder
                         Field elfSymbolValue = elfSymbol.getClass().getDeclaredField("st_value");
                         elfSymbolValue.setAccessible(true);
                         // Fix the value to be non-zero, instead pointing to our fake EXTERNAL block
-                        elfSymbolValue.set(elfSymbol, externalBlockAddrOffset);
+                        // make the symbol value relative to the image base, as that's how all other symbols are stored
+                        elfSymbolValue.set(elfSymbol, externalBlockAddrOffset - this.nxo.getBaseAddress());
                     } catch (NoSuchFieldException | IllegalAccessException e) {
                         Msg.error(this, "Couldn't find or set st_value field in ElfSymbol.", e);
                     }
