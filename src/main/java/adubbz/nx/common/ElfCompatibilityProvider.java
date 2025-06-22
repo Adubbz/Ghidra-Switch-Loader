@@ -213,8 +213,24 @@ public class ElfCompatibilityProvider
         
         ElfDynamicTable dynamicTable = this.getDynamicTable();
         ElfSymbolTable symbolTable = this.getSymbolTable();
+
+        if(dynamicTable == null)
+            return this.relocs;
+
+        try {
+            if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELR)) {
+                Msg.info(this, "Processing DT_RELR relocations...");
+                processReadOnlyRelocations(this.relocs,
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELR),
+                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELRSZ));
+            }
+        }
+        catch (NotFoundException | IOException e)
+        {
+            Msg.error(this, "Failed to get relocations", e);
+        }
         
-        if (dynamicTable == null || symbolTable == null)
+        if (symbolTable == null)
             return this.relocs;
         
         try
@@ -233,13 +249,6 @@ public class ElfCompatibilityProvider
                 processRelocations(this.relocs, this.symbolTable,
                         this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELA),
                         this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELASZ));
-            }
-
-            if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_RELR)) {
-                Msg.info(this, "Processing DT_RELR relocations...");
-                processReadOnlyRelocations(this.relocs,
-                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELR),
-                        this.dynamicTable.getDynamicValue(ElfDynamicType.DT_RELRSZ));
             }
         }
         catch (NotFoundException | IOException e)
