@@ -28,6 +28,7 @@ import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
@@ -537,7 +538,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     if (sTableAddr != null)
                     {
                         ipcComment = String.format(ipcComment, sTableAddr.getOffset());
-                        program.getListing().setComment(entry.addr, CodeUnit.PLATE_COMMENT, ipcComment);
+                        program.getListing().setComment(entry.addr, CommentType.PLATE, ipcComment);
                     }
                     
                     ipcTraces = Lists.newArrayList(processFuncTraces.get(processFuncAddr).iterator());
@@ -550,7 +551,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 {
                     // For shortened names, leave a comment so the user knows what the original name is
                     if (!entry.fullName.equals(entry.abvName))
-                        program.getListing().setComment(entry.addr, CodeUnit.REPEATABLE_COMMENT, entry.fullName);
+                        program.getListing().setComment(entry.addr, CommentType.REPEATABLE, entry.fullName);
                     
                     Msg.info(this, String.format("Creating label for %s @ 0x%X", entry.abvName, entry.addr.getOffset()));
                     program.getSymbolTable().createLabel(entry.addr, entry.abvName, null, SourceType.IMPORTED);
@@ -582,7 +583,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     }
                     else
                     {
-                        program.getListing().setComment(vtAddr, CodeUnit.REPEATABLE_COMMENT, name);
+                        program.getListing().setComment(vtAddr, CommentType.REPEATABLE, name);
                     }
                 }
                 
@@ -619,7 +620,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                             """;
                     
                     implComment = String.format(implComment, trace.bytesIn, trace.bytesOut, trace.bufferCount, trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles);
-                    program.getListing().setComment(ipcCmdImplAddr, CodeUnit.PLATE_COMMENT, implComment);
+                    program.getListing().setComment(ipcCmdImplAddr, CommentType.PLATE, implComment);
                 }
             }
             
