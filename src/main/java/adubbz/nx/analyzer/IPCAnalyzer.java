@@ -726,14 +726,15 @@ public static String demangleIpcSymbol(String mangled)
     String out = mangled;
     
     try {
-        // Use the updated API that accepts a Program parameter
-        // Since we're in a static method, we'll need to pass null for program
-        // The demangler will use default settings
-        DemangledObject demangledObj = DemanglerUtil.demangle(null, mangled);
+        // Use the new API: demangle(Program, String, Address)
+        // Pass null for Program and Address since we're in a static method
+        // This returns a List<DemangledObject>
+        List<DemangledObject> demangledObjects = DemanglerUtil.demangle(null, mangled, null);
         
-        // Where possible, replace the mangled symbol with a demangled one
-        if (demangledObj != null)
+        // Use the first result if available
+        if (demangledObjects != null && !demangledObjects.isEmpty())
         {
+            DemangledObject demangledObj = demangledObjects.get(0);
             StringBuilder builder = new StringBuilder(demangledObj.toString());
             int templateLevel = 0;
             
