@@ -117,7 +117,7 @@ public class SwitchLoader extends BinaryLoader
         {
             this.loadProgramInto(provider, loadSpec, options, log, prog, monitor);
             success = true;
-            results = List.of(new Loaded<Program>(prog, programName, project, programFolderPath));
+            results = List.of(new Loaded<Program>(prog, programName, programFolderPath));
         }
         finally 
         {
