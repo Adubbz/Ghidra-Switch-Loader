@@ -97,29 +97,33 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    protected List<Loaded<Program>> loadProgram(ImporterSettings settings) throws IOException, CancelledException {
-        LoadSpec loadSpec = settings.loadSpec();
+    protected List<Loaded<Program>> loadProgram(ByteProvider provider, String programName, 
+            Project project, String programFolderPath, LoadSpec loadSpec, List<Option> options, 
+            MessageLog log, Object consumer, TaskMonitor monitor) 
+            throws IOException, CancelledException {
+        
         LanguageCompilerSpecPair pair = loadSpec.getLanguageCompilerSpec();
         Language importerLanguage = getLanguageService().getLanguage(pair.languageID);
         CompilerSpec importerCompilerSpec = importerLanguage.getCompilerSpecByID(pair.compilerSpecID);
 
         Address baseAddr = importerLanguage.getAddressFactory().getDefaultAddressSpace().getAddress(0);
-        Program prog = createProgram(settings);
+        Program prog = createProgram(provider, programName, baseAddr, getName(), 
+                importerLanguage, importerCompilerSpec, consumer);
         boolean success = false;
 
         List<Loaded<Program>> results;
 
         try 
         {
-            this.loadInto(prog, settings);
+            this.loadProgramInto(provider, loadSpec, options, log, prog, monitor);
             success = true;
-            results = List.of(new Loaded<Program>(prog, settings));
+            results = List.of(new Loaded<Program>(prog, programName, project, programFolderPath));
         }
         finally 
         {
             if (!success) 
             {
-                prog.release(settings);
+                prog.release(consumer);
             }
         }
 
@@ -127,9 +131,11 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    protected void loadProgramInto(Program program, ImporterSettings settings) throws IOException, CancelledException {
+    protected void loadProgramInto(ByteProvider provider, LoadSpec loadSpec, List<Option> options, 
+            MessageLog log, Program program, TaskMonitor monitor) 
+            throws IOException, CancelledException {
+        
         var space = program.getAddressFactory().getDefaultAddressSpace();
-        var provider = settings.provider();
         
         if (this.binaryType == BinaryType.SX_KIP1)
         {
@@ -156,12 +162,12 @@ public class SwitchLoader extends BinaryLoader
         }
 
         var loader = new NXProgramBuilder(program, provider, adapter);
-        loader.load(settings.monitor());
+        loader.load(monitor);
         
         if (this.binaryType == BinaryType.KIP1)
         {
             // KIP1s always start with a branch instruction at the start of their text
-            loader.createEntryFunction("entry", program.getImageBase().getOffset(), settings.monitor());
+            loader.createEntryFunction("entry", program.getImageBase().getOffset(), monitor);
         }
     }
 
