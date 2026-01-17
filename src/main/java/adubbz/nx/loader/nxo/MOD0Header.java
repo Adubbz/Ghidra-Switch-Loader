@@ -15,19 +15,19 @@ import ghidra.util.Msg;
 public class MOD0Header 
 {
     private String magic;
-    private int dynamicOffset;
-    private int bssStartOffset;
-    private int bssEndOffset;
-    private int ehFrameHdrStartOffset;
-    private int ehFrameHdrEndOffset;
-    private int runtimeModuleOffset;
+    private long dynamicOffset;
+    private long bssStartOffset;
+    private long bssEndOffset;
+    private long ehFrameHdrStartOffset;
+    private long ehFrameHdrEndOffset;
+    private long runtimeModuleOffset;
     
     // libnx extensions
     private String lnxMagic;
-    private int lnxGotStart;
-    private int lnxGotEnd;
+    private long lnxGotStart;
+    private long lnxGotEnd;
     
-    public MOD0Header(BinaryReader reader, int readerOffset, int mod0StartOffset) throws InvalidMagicException, IOException
+    public MOD0Header(BinaryReader reader, long readerOffset, long mod0StartOffset) throws InvalidMagicException, IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
         
@@ -38,7 +38,7 @@ public class MOD0Header
         reader.setPointerIndex(prevPointerIndex);
     }
     
-    private void readHeader(BinaryReader reader, int mod0StartOffset) throws InvalidMagicException, IOException
+    private void readHeader(BinaryReader reader, long mod0StartOffset) throws InvalidMagicException, IOException
     {
         this.magic = reader.readNextAsciiString(4);
         
@@ -62,37 +62,37 @@ public class MOD0Header
         }
     }
     
-    public int getDynamicOffset() 
+    public long getDynamicOffset() 
     {
         return this.dynamicOffset;
     }
 
-    public int getBssStartOffset()
+    public long getBssStartOffset()
     {
         return this.bssStartOffset;
     }
     
-    public int getBssEndOffset()
+    public long getBssEndOffset()
     {
         return this.bssEndOffset;
     }
     
-    public int getBssSize()
+    public long getBssSize()
     {
         return this.bssEndOffset - this.bssStartOffset;
     }
     
-    public int getEhFrameHdrStartOffset()
+    public long getEhFrameHdrStartOffset()
     {
         return this.ehFrameHdrStartOffset;
     }
     
-    public int getEhFrameHdrEndOffset()
+    public long getEhFrameHdrEndOffset()
     {
         return this.ehFrameHdrEndOffset;
     }
     
-    public int getRuntimeModuleOffset()
+    public long getRuntimeModuleOffset()
     {
         return this.runtimeModuleOffset;
     }
@@ -103,12 +103,12 @@ public class MOD0Header
         return this.lnxMagic.equals("LNY0");
     }
     
-    public int getLibnxGotStart()
+    public long getLibnxGotStart()
     {
         return this.lnxGotStart;
     }
     
-    public int getLibnxGotEnd()
+    public long getLibnxGotEnd()
     {
         return this.lnxGotEnd;
     }

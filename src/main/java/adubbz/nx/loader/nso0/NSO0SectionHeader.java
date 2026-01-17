@@ -13,9 +13,9 @@ import ghidra.util.Msg;
 
 public class NSO0SectionHeader 
 {
-    private int fileOffset;
-    private int memoryOffset;
-    private int decompressedSize;
+    private long fileOffset;
+    private long memoryOffset;
+    private long decompressedSize;
     
     public NSO0SectionHeader(BinaryReader reader)
     {
@@ -26,9 +26,9 @@ public class NSO0SectionHeader
     {
         try
         {
-            this.fileOffset = reader.readNextInt();
-            this.memoryOffset = reader.readNextInt();
-            this.decompressedSize = reader.readNextInt();
+            this.fileOffset = reader.readNextUnsignedInt();
+            this.memoryOffset = reader.readNextUnsignedInt();
+            this.decompressedSize = reader.readNextUnsignedInt();
         } 
         catch (IOException e) 
         {
@@ -36,17 +36,17 @@ public class NSO0SectionHeader
         }
     }
     
-    public int getFileOffset()
+    public long getFileOffset()
     {
         return this.fileOffset;
     }
     
-    public int getMemoryOffset()
+    public long getMemoryOffset()
     {
         return this.memoryOffset;
     }
     
-    public int getDecompressedSize()
+    public long getDecompressedSize()
     {
         return this.decompressedSize;
     }

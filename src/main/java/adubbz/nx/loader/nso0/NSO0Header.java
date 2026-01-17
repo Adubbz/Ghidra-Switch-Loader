@@ -16,18 +16,18 @@ import ghidra.util.Msg;
 public class NSO0Header 
 {
     private String magic;
-    private int version;
-    private int flags;
+    private long version;
+    private long flags;
     private NSO0SectionHeader textHeader;
-    private int moduleOffset;
+    private long moduleOffset;
     private NSO0SectionHeader rodataHeader;
-    private int moduleFileSize;
+    private long moduleFileSize;
     private NSO0SectionHeader dataHeader;
-    private int bssSize;
+    private long bssSize;
     private byte[] buildId;
-    private int compressedTextSize;
-    private int compressedRodataSize;
-    private int compressedDataSize;
+    private long compressedTextSize;
+    private long compressedRodataSize;
+    private long compressedDataSize;
     
     public NSO0Header(BinaryReader reader, int readerOffset)
     {
@@ -49,19 +49,19 @@ public class NSO0Header
             if (!this.magic.equals("NSO0"))
                 throw new InvalidMagicException("NSO0");
             
-            this.version = reader.readNextInt();
-            reader.readNextInt(); // Reserved
-            this.flags = reader.readNextInt();
+            this.version = reader.readNextUnsignedInt();
+            reader.readNextUnsignedInt(); // Reserved
+            this.flags = reader.readNextUnsignedInt();
             this.textHeader = new NSO0SectionHeader(reader);
-            this.moduleOffset = reader.readNextInt();
+            this.moduleOffset = reader.readNextUnsignedInt();
             this.rodataHeader = new NSO0SectionHeader(reader);
-            this.moduleFileSize = reader.readNextInt();
+            this.moduleFileSize = reader.readNextUnsignedInt();
             this.dataHeader = new NSO0SectionHeader(reader);
-            this.bssSize = reader.readNextInt();
+            this.bssSize = reader.readNextUnsignedInt();
             this.buildId = reader.readNextByteArray(0x20);
-            this.compressedTextSize = reader.readNextInt();
-            this.compressedRodataSize = reader.readNextInt();
-            this.compressedDataSize = reader.readNextInt();
+            this.compressedTextSize = reader.readNextUnsignedInt();
+            this.compressedRodataSize = reader.readNextUnsignedInt();
+            this.compressedDataSize = reader.readNextUnsignedInt();
         } 
         catch (IOException e) 
         {
@@ -89,7 +89,7 @@ public class NSO0Header
         };
     }
     
-    public int getCompressedSectionSize(NXOSectionType type)
+    public long getCompressedSectionSize(NXOSectionType type)
     {
         return switch (type) {
             case TEXT -> this.compressedTextSize;
@@ -110,7 +110,7 @@ public class NSO0Header
         return (this.flags & flagMask) > 0;
     }
     
-    public int getBssSize()
+    public long getBssSize()
     {
         return this.bssSize;
     }

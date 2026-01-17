@@ -50,13 +50,13 @@ public class NSO0Adapter extends MOD0Adapter
         NSO0SectionHeader textHeader = this.nso0.getSectionHeader(NXOSectionType.TEXT);
         NSO0SectionHeader rodataHeader = this.nso0.getSectionHeader(NXOSectionType.RODATA);
         NSO0SectionHeader dataHeader = this.nso0.getSectionHeader(NXOSectionType.DATA);
-        
-        int textOffset = textHeader.getMemoryOffset();
-        int rodataOffset = rodataHeader.getMemoryOffset();
-        int dataOffset = dataHeader.getMemoryOffset();
-        int textSize = textHeader.getDecompressedSize();
-        int rodataSize = rodataHeader.getDecompressedSize();
-        int dataSize = dataHeader.getDecompressedSize();
+
+        int textOffset = Math.toIntExact(textHeader.getMemoryOffset());
+        int rodataOffset = Math.toIntExact(rodataHeader.getMemoryOffset());
+        int dataOffset = Math.toIntExact(dataHeader.getMemoryOffset());
+        int textSize = Math.toIntExact(textHeader.getDecompressedSize());
+        int rodataSize = Math.toIntExact(rodataHeader.getDecompressedSize());
+        int dataSize = Math.toIntExact(dataHeader.getDecompressedSize());
         
         // The data section is last, so we use its offset + decompressed size
         byte[] full = new byte[dataOffset + dataSize];
