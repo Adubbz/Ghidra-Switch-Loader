@@ -15,15 +15,15 @@ import ghidra.util.Msg;
 
 public class NRO0Header 
 {
-    private int mod0Offset;
+    private long mod0Offset;
     private String magic;
     private int version;
-    private int size;
-    private int flags;
+    private long size;
+    private long flags;
     private NRO0SectionHeader textHeader;
     private NRO0SectionHeader rodataHeader;
     private NRO0SectionHeader dataHeader;
-    private int bssSize;
+    private long bssSize;
     private byte[] buildId;
     private NRO0SectionHeader apiInfo;
     private NRO0SectionHeader dynstr;
@@ -44,24 +44,24 @@ public class NRO0Header
     {
         try 
         {
-            reader.readNextInt(); // Reserved
-            this.mod0Offset = reader.readNextInt();
+            reader.readNextUnsignedInt(); // Reserved
+            this.mod0Offset = reader.readNextUnsignedInt();
             reader.readNextLong(); // Padding
             this.magic = reader.readNextAsciiString(4);
             
             if (!this.magic.equals("NRO0"))
                 throw new InvalidMagicException("NRO0");
             
-            this.version = reader.readNextInt();
-            this.size = reader.readNextInt();
-            this.flags = reader.readNextInt();
+            this.version = reader.readNextUnsignedByte();
+            this.size = reader.readNextUnsignedInt();
+            this.flags = reader.readNextUnsignedInt();
             this.textHeader = new NRO0SectionHeader(reader);
             this.rodataHeader = new NRO0SectionHeader(reader);
             this.dataHeader = new NRO0SectionHeader(reader);
-            this.bssSize = reader.readNextInt();
-            reader.readNextInt(); // Reserved
+            this.bssSize = reader.readNextUnsignedInt();
+            reader.readNextUnsignedInt(); // Reserved
             this.buildId = reader.readNextByteArray(0x20);
-            reader.readNextInt(); // Reserved
+            reader.readNextUnsignedInt(); // Reserved
             this.apiInfo = new NRO0SectionHeader(reader);
             this.dynstr = new NRO0SectionHeader(reader);
             this.dynsym = new NRO0SectionHeader(reader);
@@ -82,7 +82,7 @@ public class NRO0Header
         };
     }
 
-    public int getBssSize()
+    public long getBssSize()
     {
         return this.bssSize;
     }

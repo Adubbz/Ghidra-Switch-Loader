@@ -46,24 +46,24 @@ public class NRO0Adapter extends MOD0Adapter
         NRO0SectionHeader rodataHeader = this.nro0.getSectionHeader(NXOSectionType.RODATA);
         NRO0SectionHeader dataHeader = this.nro0.getSectionHeader(NXOSectionType.DATA);
 
-        int textOffset = textHeader.getFileOffset();
-        int rodataOffset = rodataHeader.getFileOffset();
-        int dataOffset = dataHeader.getFileOffset();
-        int textSize = textHeader.getSize();
-        int rodataSize = rodataHeader.getSize();
-        int dataSize = dataHeader.getSize();
+        long textOffset = textHeader.getFileOffset();
+        long rodataOffset = rodataHeader.getFileOffset();
+        long dataOffset = dataHeader.getFileOffset();
+        long textSize = textHeader.getSize();
+        long rodataSize = rodataHeader.getSize();
+        long dataSize = dataHeader.getSize();
 
         // The data section is last, so we use its offset + decompressed size
-        byte[] full = new byte[dataOffset + dataSize];
+        byte[] full = new byte[Math.toIntExact(dataOffset + dataSize)];
 
         byte[] text = this.fileProvider.readBytes(textHeader.getFileOffset(), textSize);
-        System.arraycopy(text, 0, full, textOffset, textSize);
+        System.arraycopy(text, 0, full, Math.toIntExact(textOffset), Math.toIntExact(textSize));
 
         byte[] rodata = this.fileProvider.readBytes(rodataHeader.getFileOffset(), rodataSize);
-        System.arraycopy(rodata, 0, full, rodataOffset, rodataSize);
+        System.arraycopy(rodata, 0, full, Math.toIntExact(rodataOffset), Math.toIntExact(rodataSize));
 
         byte[] data = this.fileProvider.readBytes(dataHeader.getFileOffset(), dataSize);
-        System.arraycopy(data, 0, full, dataOffset, dataSize);
+        System.arraycopy(data, 0, full, Math.toIntExact(dataOffset), Math.toIntExact(dataSize));
         this.memoryProvider = new ByteArrayProvider(full);
         
         this.sections = new NXOSection[3];

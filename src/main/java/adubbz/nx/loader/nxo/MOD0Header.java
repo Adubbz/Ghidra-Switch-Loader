@@ -45,20 +45,20 @@ public class MOD0Header
         if (!this.magic.equals("MOD0"))
             throw new InvalidMagicException("MOD0");
         
-        this.dynamicOffset = mod0StartOffset + reader.readNextInt();
-        this.bssStartOffset = mod0StartOffset + reader.readNextInt();
-        this.bssEndOffset = mod0StartOffset + reader.readNextInt();
-        this.ehFrameHdrStartOffset = mod0StartOffset + reader.readNextInt();
-        this.ehFrameHdrEndOffset = mod0StartOffset + reader.readNextInt();
-        this.runtimeModuleOffset = mod0StartOffset + reader.readNextInt();
+        this.dynamicOffset = mod0StartOffset + reader.readNextUnsignedInt();
+        this.bssStartOffset = mod0StartOffset + reader.readNextUnsignedInt();
+        this.bssEndOffset = mod0StartOffset + reader.readNextUnsignedInt();
+        this.ehFrameHdrStartOffset = mod0StartOffset + reader.readNextUnsignedInt();
+        this.ehFrameHdrEndOffset = mod0StartOffset + reader.readNextUnsignedInt();
+        this.runtimeModuleOffset = mod0StartOffset + reader.readNextUnsignedInt();
         
         this.lnxMagic = reader.readNextAsciiString(4);
         
         if (this.lnxMagic.equals("LNY0"))
         {
             Msg.info(this, "Detected Libnx MOD0 extension");
-            this.lnxGotStart = mod0StartOffset + reader.readNextInt();
-            this.lnxGotEnd = mod0StartOffset + reader.readNextInt();
+            this.lnxGotStart = mod0StartOffset + reader.readNextUnsignedInt();
+            this.lnxGotEnd = mod0StartOffset + reader.readNextUnsignedInt();
         }
     }
     

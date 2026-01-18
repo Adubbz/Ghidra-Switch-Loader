@@ -51,15 +51,15 @@ public class NSO0Adapter extends MOD0Adapter
         NSO0SectionHeader rodataHeader = this.nso0.getSectionHeader(NXOSectionType.RODATA);
         NSO0SectionHeader dataHeader = this.nso0.getSectionHeader(NXOSectionType.DATA);
 
-        int textOffset = Math.toIntExact(textHeader.getMemoryOffset());
-        int rodataOffset = Math.toIntExact(rodataHeader.getMemoryOffset());
-        int dataOffset = Math.toIntExact(dataHeader.getMemoryOffset());
-        int textSize = Math.toIntExact(textHeader.getDecompressedSize());
-        int rodataSize = Math.toIntExact(rodataHeader.getDecompressedSize());
-        int dataSize = Math.toIntExact(dataHeader.getDecompressedSize());
+        long textOffset = textHeader.getMemoryOffset();
+        long rodataOffset = rodataHeader.getMemoryOffset();
+        long dataOffset = dataHeader.getMemoryOffset();
+        long textSize = textHeader.getDecompressedSize();
+        long rodataSize = rodataHeader.getDecompressedSize();
+        long dataSize = dataHeader.getDecompressedSize();
         
         // The data section is last, so we use its offset + decompressed size
-        byte[] full = new byte[dataOffset + dataSize];
+        byte[] full = new byte[Math.toIntExact(dataOffset + dataSize)];
         byte[] decompressedText;
         byte[] decompressedRodata;
         byte[] decompressedData;
@@ -67,7 +67,7 @@ public class NSO0Adapter extends MOD0Adapter
         if (this.nso0.isSectionCompressed(NXOSectionType.TEXT))
         {
             byte[] compressedText = this.fileProvider.readBytes(this.nso0.getSectionFileOffset(NXOSectionType.TEXT), this.nso0.getCompressedSectionSize(NXOSectionType.TEXT));
-            decompressedText = new byte[textSize];
+            decompressedText = new byte[Math.toIntExact(textSize)];
             decompressor.decompress(compressedText, decompressedText);
         }
         else
@@ -75,12 +75,12 @@ public class NSO0Adapter extends MOD0Adapter
             decompressedText = this.fileProvider.readBytes(this.nso0.getSectionFileOffset(NXOSectionType.TEXT), textSize);
         }
         
-        System.arraycopy(decompressedText, 0, full, textOffset, textSize);
+        System.arraycopy(decompressedText, 0, full, Math.toIntExact(textOffset), Math.toIntExact(textSize));
         
         if (this.nso0.isSectionCompressed(NXOSectionType.RODATA))
         {
             byte[] compressedRodata = this.fileProvider.readBytes(this.nso0.getSectionFileOffset(NXOSectionType.RODATA), this.nso0.getCompressedSectionSize(NXOSectionType.RODATA));
-            decompressedRodata = new byte[rodataSize];
+            decompressedRodata = new byte[Math.toIntExact(rodataSize)];
             decompressor.decompress(compressedRodata, decompressedRodata);
         }
         else
@@ -88,12 +88,12 @@ public class NSO0Adapter extends MOD0Adapter
             decompressedRodata = this.fileProvider.readBytes(this.nso0.getSectionFileOffset(NXOSectionType.RODATA), rodataSize);
         }
         
-        System.arraycopy(decompressedRodata, 0, full, rodataOffset, rodataSize);
+        System.arraycopy(decompressedRodata, 0, full, Math.toIntExact(rodataOffset), Math.toIntExact(rodataSize));
         
         if (this.nso0.isSectionCompressed(NXOSectionType.DATA))
         {
             byte[] compressedData = this.fileProvider.readBytes(this.nso0.getSectionFileOffset(NXOSectionType.DATA), this.nso0.getCompressedSectionSize(NXOSectionType.DATA));
-            decompressedData = new byte[dataSize];
+            decompressedData = new byte[Math.toIntExact(dataSize)];
             decompressor.decompress(compressedData, decompressedData);
         }
         else
@@ -101,7 +101,7 @@ public class NSO0Adapter extends MOD0Adapter
             decompressedData = this.fileProvider.readBytes(this.nso0.getSectionFileOffset(NXOSectionType.DATA), dataSize);
         }
         
-        System.arraycopy(decompressedData, 0, full, dataOffset, dataSize);
+        System.arraycopy(decompressedData, 0, full, Math.toIntExact(dataOffset), Math.toIntExact(dataSize));
         this.memoryProvider = new ByteArrayProvider(full);
         
         this.sections = new NXOSection[3];
