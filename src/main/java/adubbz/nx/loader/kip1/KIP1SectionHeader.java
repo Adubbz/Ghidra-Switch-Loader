@@ -14,10 +14,10 @@ import ghidra.util.Msg;
 
 public class KIP1SectionHeader 
 {
-    private int outOffset;
-    private int decompressedSize;
-    private int compressedSize;
-    private int attributes;
+    private long outOffset;
+    private long decompressedSize;
+    private long compressedSize;
+    private long attributes;
     
     public KIP1SectionHeader(BinaryReader reader)
     {
@@ -28,10 +28,10 @@ public class KIP1SectionHeader
     {
         try
         {
-            this.outOffset = reader.readNextInt();
-            this.decompressedSize = reader.readNextInt();
-            this.compressedSize = reader.readNextInt();
-            this.attributes = reader.readNextInt();
+            this.outOffset = reader.readNextUnsignedInt();
+            this.decompressedSize = reader.readNextUnsignedInt();
+            this.compressedSize = reader.readNextUnsignedInt();
+            this.attributes = reader.readNextUnsignedInt();
         } 
         catch (IOException e) 
         {
@@ -39,12 +39,12 @@ public class KIP1SectionHeader
         }
     }
     
-    public int getOutOffset()
+    public long getOutOffset()
     {
         return this.outOffset;
     }
     
-    public int getDecompressedSize()
+    public long getDecompressedSize()
     {
         return this.decompressedSize;
     }
@@ -53,12 +53,12 @@ public class KIP1SectionHeader
      * NOTE: This will be the same as the decompressed size when
      * no compression is applied.
      */
-    public int getCompressedSize()
+    public long getCompressedSize()
     {
         return this.compressedSize;
     }
     
-    public int getAttributes()
+    public long getAttributes()
     {
         return this.attributes;
     }

@@ -81,7 +81,7 @@ public class KIP1Header
         }
     }
     
-    public int getCompressedSectionSize(NXOSectionType type)
+    public long getCompressedSectionSize(NXOSectionType type)
     {
         return this.sectionHeaders[type.ordinal()].getCompressedSize();
     }

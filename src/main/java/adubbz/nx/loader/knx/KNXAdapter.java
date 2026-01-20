@@ -64,26 +64,26 @@ public class KNXAdapter extends MOD0Adapter
         long mapOffset = this.fileReader.getPointerIndex() - 0x34;
         this.map = new KNXMapHeader(this.fileReader, (int)mapOffset);
         
-        int textOffset = this.map.getTextFileOffset();
-        int rodataOffset = this.map.getRodataFileOffset();
-        int dataOffset = this.map.getDataFileOffset();
-        int textSize = this.map.getTextSize();
-        int rodataSize = this.map.getRodataSize();
-        int dataSize = this.map.getDataSize();
+        long textOffset = this.map.getTextFileOffset();
+        long rodataOffset = this.map.getRodataFileOffset();
+        long dataOffset = this.map.getDataFileOffset();
+        long textSize = this.map.getTextSize();
+        long rodataSize = this.map.getRodataSize();
+        long dataSize = this.map.getDataSize();
 
         Msg.info(this, String.format("Text size: 0x%X", textSize));
         
         // The data section is last, so we use its offset + decompressed size
-        byte[] full = new byte[dataOffset + dataSize];
+        byte[] full = new byte[Math.toIntExact(dataOffset + dataSize)];
 
         byte[] text = this.fileProvider.readBytes(textOffset, textSize);
-        System.arraycopy(text, 0, full, textOffset, textSize);
+        System.arraycopy(text, 0, full, Math.toIntExact(textOffset), Math.toIntExact(textSize));
 
         byte[] rodata = this.fileProvider.readBytes(rodataOffset, rodataSize);
-        System.arraycopy(rodata, 0, full, rodataOffset, rodataSize);
+        System.arraycopy(rodata, 0, full, Math.toIntExact(rodataOffset), Math.toIntExact(rodataSize));
 
         byte[] data = this.fileProvider.readBytes(dataOffset, dataSize);
-        System.arraycopy(data, 0, full, dataOffset, dataSize);
+        System.arraycopy(data, 0, full, Math.toIntExact(dataOffset), Math.toIntExact(dataSize));
         this.memoryProvider = new ByteArrayProvider(full);
         
         this.sections = new NXOSection[3];

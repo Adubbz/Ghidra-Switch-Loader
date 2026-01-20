@@ -6,8 +6,6 @@
  */
 package adubbz.nx.util;
 
-import java.io.IOException;
-
 import ghidra.app.util.bin.MemoryByteProvider;
 import ghidra.program.model.listing.Program;
 

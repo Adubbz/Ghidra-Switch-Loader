@@ -156,11 +156,22 @@ public class ElfCompatibilityProvider
         {
             long symbolTableOff = dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMTAB) + this.program.getImageBase().getOffset();
             long symbolEntrySize = dynamicTable.getDynamicValue(ElfDynamicType.DT_SYMENT);
-            long dtHashOff = dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
-            long nchain = this.binaryReader.readUnsignedInt(this.program.getImageBase().getOffset() + dtHashOff + 4);
-            long symbolTableSize = nchain * symbolEntrySize;
+            long symbolTableSize;
             
-            symbolTable = new ElfSymbolTable(this.binaryReader, this.dummyElfHeader, null,
+            if (dynamicTable.containsDynamicValue(ElfDynamicType.DT_HASH)) {
+                long dtHashOff = dynamicTable.getDynamicValue(ElfDynamicType.DT_HASH);
+                long nchain = this.binaryReader.readUnsignedInt(this.program.getImageBase().getOffset() + dtHashOff + 4);
+                symbolTableSize = nchain * symbolEntrySize;
+            }
+            else if (symbolTableOff < stringTable.getAddressOffset()) {
+                symbolTableSize = stringTable.getAddressOffset() - symbolTableOff;
+            }
+            else {
+                Msg.error(this, "Unable to determine symbol table size.");
+                return null;
+            }
+            
+            this.symbolTable = new ElfSymbolTable(this.binaryReader, this.dummyElfHeader, null,
                     symbolTableOff,
                     symbolTableOff,
                     symbolTableSize,

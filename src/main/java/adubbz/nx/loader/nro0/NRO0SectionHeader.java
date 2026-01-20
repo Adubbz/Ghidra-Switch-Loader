@@ -13,8 +13,8 @@ import ghidra.util.Msg;
 
 public class NRO0SectionHeader 
 {
-    private int fileOffset;
-    private int size;
+    private long fileOffset;
+    private long size;
 
     public NRO0SectionHeader(BinaryReader reader)
     {
@@ -25,8 +25,8 @@ public class NRO0SectionHeader
     {
         try
         {
-            this.fileOffset = reader.readNextInt();
-            this.size = reader.readNextInt();
+            this.fileOffset = reader.readNextUnsignedInt();
+            this.size = reader.readNextUnsignedInt();
         } 
         catch (IOException e) 
         {
@@ -34,12 +34,12 @@ public class NRO0SectionHeader
         }
     }
 
-    public int getFileOffset()
+    public long getFileOffset()
     {
         return this.fileOffset;
     }
 
-    public int getSize()
+    public long getSize()
     {
         return this.size;
     }

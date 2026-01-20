@@ -8,21 +8,21 @@ package adubbz.nx.loader.nxo;
 
 public class NXOSection 
 {
-    private int offset;
-    private int size;
+    private long offset;
+    private long size;
     
-    public NXOSection(NXOSectionType type, int offset, int size)
+    public NXOSection(NXOSectionType type, long offset, long size)
     {
         this.offset = offset;
         this.size = size;
     }
     
-    public int getOffset()
+    public long getOffset()
     {
         return this.offset;
     }
     
-    public int getSize()
+    public long getSize()
     {
         return this.size;
     }

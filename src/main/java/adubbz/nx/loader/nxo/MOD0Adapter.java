@@ -180,9 +180,9 @@ public abstract class MOD0Adapter extends NXOAdapter
         
         try 
         {
-            int mod0Offset = this.getMemoryReader().readInt(this.getSection(NXOSectionType.TEXT).getOffset() + 4);
+            long mod0Offset = this.getMemoryReader().readUnsignedInt(this.getSection(NXOSectionType.TEXT).getOffset() + 4);
         
-            if (Integer.toUnsignedLong(mod0Offset) >= this.getMemoryProvider().length())
+            if (mod0Offset >= this.getMemoryProvider().length())
                 throw new IllegalArgumentException("Mod0 offset is outside the binary!");
             
             this.mod0 = new MOD0Header(this.getMemoryReader(), mod0Offset, mod0Offset);

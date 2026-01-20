@@ -13,18 +13,18 @@ import ghidra.util.Msg;
 
 public class KNXMapHeader 
 {
-    private int textOffset;
-    private int textEndOffset;
-    private int rodataOffset;
-    private int rodataEndOffset;
-    private int dataOffset;
-    private int dataEndOffset;
-    private int bssOffset;
-    private int bssEndOffset;
-    private int ini1Offset;
-    private int dynamicOffset;
-    private int initArrayOffset;
-    private int initArrayEndOffset;
+    private long textOffset;
+    private long textEndOffset;
+    private long rodataOffset;
+    private long rodataEndOffset;
+    private long dataOffset;
+    private long dataEndOffset;
+    private long bssOffset;
+    private long bssEndOffset;
+    private long ini1Offset;
+    private long dynamicOffset;
+    private long initArrayOffset;
+    private long initArrayEndOffset;
     
     public KNXMapHeader(BinaryReader reader, int readerOffset)
     {
@@ -41,18 +41,18 @@ public class KNXMapHeader
     {
         try 
         {
-            this.textOffset = reader.readNextInt();
-            this.textEndOffset = reader.readNextInt();
-            this.rodataOffset = reader.readNextInt();
-            this.rodataEndOffset = reader.readNextInt();
-            this.dataOffset = reader.readNextInt();
-            this.dataEndOffset = reader.readNextInt();
-            this.bssOffset = reader.readNextInt();
-            this.bssEndOffset = reader.readNextInt();
-            this.ini1Offset = reader.readNextInt();
-            this.dynamicOffset = reader.readNextInt();
-            this.initArrayOffset = reader.readNextInt();
-            this.initArrayEndOffset = reader.readNextInt();
+            this.textOffset = reader.readNextUnsignedInt();
+            this.textEndOffset = reader.readNextUnsignedInt();
+            this.rodataOffset = reader.readNextUnsignedInt();
+            this.rodataEndOffset = reader.readNextUnsignedInt();
+            this.dataOffset = reader.readNextUnsignedInt();
+            this.dataEndOffset = reader.readNextUnsignedInt();
+            this.bssOffset = reader.readNextUnsignedInt();
+            this.bssEndOffset = reader.readNextUnsignedInt();
+            this.ini1Offset = reader.readNextUnsignedInt();
+            this.dynamicOffset = reader.readNextUnsignedInt();
+            this.initArrayOffset = reader.readNextUnsignedInt();
+            this.initArrayEndOffset = reader.readNextUnsignedInt();
         } 
         catch (IOException e) 
         {
@@ -60,47 +60,47 @@ public class KNXMapHeader
         }
     }
     
-    public int getTextFileOffset()
+    public long getTextFileOffset()
     {
         return this.textOffset;
     }
     
-    public int getTextSize()
+    public long getTextSize()
     {
         return this.textEndOffset - this.textOffset;
     }
     
-    public int getRodataFileOffset()
+    public long getRodataFileOffset()
     {
         return this.rodataOffset;
     }
     
-    public int getRodataSize()
+    public long getRodataSize()
     {
         return this.rodataEndOffset - this.rodataOffset;
     }
     
-    public int getDataFileOffset()
+    public long getDataFileOffset()
     {
         return this.dataOffset;
     }
     
-    public int getDataSize()
+    public long getDataSize()
     {
         return this.dataEndOffset - this.dataOffset;
     }
     
-    public int getBssFileOffset()
+    public long getBssFileOffset()
     {
         return this.bssOffset;
     }
     
-    public int getBssSize()
+    public long getBssSize()
     {
         return this.bssEndOffset - this.bssOffset;
     }
     
-    public int getDynamicOffset()
+    public long getDynamicOffset()
     {
         return this.dynamicOffset;
     }

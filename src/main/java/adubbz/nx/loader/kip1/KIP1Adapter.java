@@ -47,15 +47,15 @@ public class KIP1Adapter extends MOD0Adapter
         KIP1SectionHeader rodataHeader = this.kip1.getSectionHeader(NXOSectionType.RODATA);
         KIP1SectionHeader dataHeader = this.kip1.getSectionHeader(NXOSectionType.DATA);
         
-        int textOffset = textHeader.getOutOffset();
-        int rodataOffset = rodataHeader.getOutOffset();
-        int dataOffset = dataHeader.getOutOffset();
-        int textSize = textHeader.getDecompressedSize();
-        int rodataSize = rodataHeader.getDecompressedSize();
-        int dataSize = dataHeader.getDecompressedSize();
+        long textOffset = textHeader.getOutOffset();
+        long rodataOffset = rodataHeader.getOutOffset();
+        long dataOffset = dataHeader.getOutOffset();
+        long textSize = textHeader.getDecompressedSize();
+        long rodataSize = rodataHeader.getDecompressedSize();
+        long dataSize = dataHeader.getDecompressedSize();
         
         // The data section is last, so we use its offset + decompressed size
-        byte[] full = new byte[dataOffset + dataSize];
+        byte[] full = new byte[Math.toIntExact(dataOffset + dataSize)];
         byte[] decompressedText;
         byte[] decompressedRodata;
         byte[] decompressedData;
@@ -63,38 +63,38 @@ public class KIP1Adapter extends MOD0Adapter
         if (this.kip1.isSectionCompressed(NXOSectionType.TEXT))
         {
             byte[] compressedText = this.fileProvider.readBytes(this.kip1.getSectionFileOffset(NXOSectionType.TEXT), this.kip1.getCompressedSectionSize(NXOSectionType.TEXT));
-            decompressedText = ByteUtil.kip1BlzDecompress(compressedText, textSize);
+            decompressedText = ByteUtil.kip1BlzDecompress(compressedText, Math.toIntExact(textSize));
         }
         else
         {
             decompressedText = this.fileProvider.readBytes(this.kip1.getSectionFileOffset(NXOSectionType.TEXT), textSize);
         }
         
-        System.arraycopy(decompressedText, 0, full, textOffset, textSize);
+        System.arraycopy(decompressedText, 0, full, Math.toIntExact(textOffset), Math.toIntExact(textSize));
         
         if (this.kip1.isSectionCompressed(NXOSectionType.RODATA))
         {
             byte[] compressedRodata = this.fileProvider.readBytes(this.kip1.getSectionFileOffset(NXOSectionType.RODATA), this.kip1.getCompressedSectionSize(NXOSectionType.RODATA));
-            decompressedRodata = ByteUtil.kip1BlzDecompress(compressedRodata, rodataSize);
+            decompressedRodata = ByteUtil.kip1BlzDecompress(compressedRodata, Math.toIntExact(rodataSize));
         }
         else
         {
             decompressedRodata = this.fileProvider.readBytes(this.kip1.getSectionFileOffset(NXOSectionType.RODATA), rodataSize);
         }
         
-        System.arraycopy(decompressedRodata, 0, full, rodataOffset, rodataSize);
+        System.arraycopy(decompressedRodata, 0, full, Math.toIntExact(rodataOffset), Math.toIntExact(rodataSize));
         
         if (this.kip1.isSectionCompressed(NXOSectionType.DATA))
         {
             byte[] compressedData = this.fileProvider.readBytes(this.kip1.getSectionFileOffset(NXOSectionType.DATA), this.kip1.getCompressedSectionSize(NXOSectionType.DATA));
-            decompressedData = ByteUtil.kip1BlzDecompress(compressedData, dataSize);
+            decompressedData = ByteUtil.kip1BlzDecompress(compressedData, Math.toIntExact(dataSize));
         }
         else
         {
             decompressedData = this.fileProvider.readBytes(this.kip1.getSectionFileOffset(NXOSectionType.DATA), dataSize);
         }
         
-        System.arraycopy(decompressedData, 0, full, dataOffset, dataSize);
+        System.arraycopy(decompressedData, 0, full, Math.toIntExact(dataOffset), Math.toIntExact(dataSize));
         this.memoryProvider = new ByteArrayProvider(full);
         
         this.sections = new NXOSection[3];
