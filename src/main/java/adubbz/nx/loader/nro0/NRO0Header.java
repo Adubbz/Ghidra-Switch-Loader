@@ -17,7 +17,7 @@ public class NRO0Header
 {
     private long mod0Offset;
     private String magic;
-    private int version;
+    private long version;
     private long size;
     private long flags;
     private NRO0SectionHeader textHeader;
@@ -52,7 +52,7 @@ public class NRO0Header
             if (!this.magic.equals("NRO0"))
                 throw new InvalidMagicException("NRO0");
             
-            this.version = reader.readNextUnsignedByte();
+            this.version = reader.readNextUnsignedInt();
             this.size = reader.readNextUnsignedInt();
             this.flags = reader.readNextUnsignedInt();
             this.textHeader = new NRO0SectionHeader(reader);
