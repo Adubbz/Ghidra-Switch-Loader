@@ -8,6 +8,7 @@ package adubbz.nx.analyzer;
 
 import adubbz.nx.analyzer.ipc.IPCEmulator;
 import adubbz.nx.analyzer.ipc.IPCTrace;
+import adubbz.nx.analyzer.ipc.IPCDatabase;
 import adubbz.nx.common.ElfCompatibilityProvider;
 import adubbz.nx.common.NXRelocation;
 import adubbz.nx.loader.SwitchLoader;
@@ -29,6 +30,7 @@ import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Data;
+import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
@@ -36,6 +38,7 @@ import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
 import ghidra.util.exception.InvalidInputException;
@@ -82,22 +85,115 @@ public class IPCAnalyzer extends AbstractAnalyzer
     {
         Memory memory = program.getMemory();
         MemoryBlock text = memory.getBlock(".text");
-        MemoryBlock rodata = memory.getBlock(".rodata");
         MemoryBlock data = memory.getBlock(".data");
         ElfCompatibilityProvider elfCompatProvider = new ElfCompatibilityProvider(program, false);
         
         Msg.info(this, "Beginning IPC analysis...");
         
-        if (text == null || rodata == null || data == null)
+        if (text == null || data == null)
             return true;
-        
+
+        // .rodata may be split into .rodata, .rodata.1, .rodata.2 etc.
+        // Just check that at least one rodata block exists.
+        boolean hasRodata = false;
+        for (MemoryBlock block : memory.getBlocks())
+        {
+            if (block.getName().startsWith(".rodata"))
+            {
+                hasRodata = true;
+                break;
+            }
+        }
+
+        if (!hasRodata)
+            return true;
+
         try
         {
             List<Address> vtAddrs = this.locateIpcVtables(program, elfCompatProvider);
-            List<IPCVTableEntry> vtEntries = this.createVTableEntries(program, elfCompatProvider, vtAddrs);
+            // FIX 3: build rttiNames before createVTableEntries and pass it in
+            Map<Address, String> rttiNames = this.buildRttiNameMap(program, elfCompatProvider);
+            Set<Address> allVtAddrs = new LinkedHashSet<>(vtAddrs);
+            allVtAddrs.addAll(rttiNames.keySet());
+            vtAddrs = new ArrayList<>(allVtAddrs);
+            List<IPCVTableEntry> vtEntries = this.createVTableEntries(program, elfCompatProvider, vtAddrs, rttiNames);
             HashBiMap<Address, Address> sTableProcessFuncMap = this.locateSTables(program, elfCompatProvider);
             Multimap<Address, IPCTrace> processFuncTraces = this.emulateProcessFunctions(program, monitor, sTableProcessFuncMap.values());
             HashBiMap<Address, IPCVTableEntry> procFuncVtMap = this.matchVtables(vtEntries, sTableProcessFuncMap.values(), processFuncTraces);
+
+            // NOW patch names using emulated command IDs against database
+            Map<String, Map<String, String>> allIfaces = IPCDatabase.getInstance().getAllInterfaces();
+
+            // Pass 1: rename SRV_ vtable entries that were matched by size but not named by RTTI
+            for (int i = 0; i < vtEntries.size(); i++)
+            {
+                IPCVTableEntry entry = vtEntries.get(i);
+                if (!entry.abvName.startsWith("SRV_"))
+                    continue;
+
+                Address procFuncAddr = procFuncVtMap.inverse().get(entry);
+                if (procFuncAddr == null || !processFuncTraces.containsKey(procFuncAddr))
+                    continue;
+
+                Set<Long> emulatedCmds = processFuncTraces.get(procFuncAddr).stream()
+                    .filter(t -> t.vtOffset != -1)
+                    .map(t -> t.cmdId)
+                    .collect(Collectors.toSet());
+
+                if (emulatedCmds.isEmpty()) continue;
+
+                InterfaceMatch bestMatch = findBestInterfaceMatch(allIfaces, emulatedCmds);
+
+                if (bestMatch != null)
+                {
+                    String fullName = bestMatch.iface + "::vtable";
+                    String shortName = shortenIpcSymbol(fullName);
+                    Msg.info(this, String.format("Cmd-matched: %s -> %s (score %d/%d)",
+                        entry.abvName, shortName, bestMatch.score, emulatedCmds.size()));
+
+                    IPCVTableEntry newEntry = new IPCVTableEntry(fullName, shortName, entry.addr, entry.ipcFuncs);
+                    vtEntries.set(i, newEntry);
+
+                    Address procFuncAddrForEntry = procFuncVtMap.inverse().get(entry);
+                    if (procFuncAddrForEntry != null)
+                        procFuncVtMap.forcePut(procFuncAddrForEntry, newEntry);
+                }
+            }
+
+            // Pass 2: handle process functions that have no vtable match at all
+            // (their vtable was only found as a proxy, not a dispatcher)
+            for (Address procFuncAddr : sTableProcessFuncMap.values())
+            {
+                if (procFuncVtMap.containsKey(procFuncAddr))
+                    continue;
+
+                if (!processFuncTraces.containsKey(procFuncAddr))
+                    continue;
+
+                Set<Long> emulatedCmds = processFuncTraces.get(procFuncAddr).stream()
+                    .filter(t -> t.vtOffset != -1)
+                    .map(t -> t.cmdId)
+                    .collect(Collectors.toSet());
+
+                if (emulatedCmds.isEmpty()) continue;
+
+                InterfaceMatch bestMatch = findBestInterfaceMatch(allIfaces, emulatedCmds);
+
+                if (bestMatch != null)
+                {
+                    String fullName = bestMatch.iface + "::vtable";
+                    String shortName = shortenIpcSymbol(fullName);
+                    Msg.info(this, String.format("Cmd-matched unmatched proc_func 0x%X -> %s (score %d/%d)",
+                        procFuncAddr.getOffset(), bestMatch.iface, bestMatch.score, emulatedCmds.size()));
+
+                    Address sTableAddr = sTableProcessFuncMap.inverse().get(procFuncAddr);
+                    IPCVTableEntry newEntry = new IPCVTableEntry(fullName, shortName,
+                        sTableAddr != null ? sTableAddr : procFuncAddr, new ArrayList<>());
+                    vtEntries.add(newEntry);
+                    procFuncVtMap.forcePut(procFuncAddr, newEntry);
+                }
+            }
+
             this.markupIpc(program, monitor, vtEntries, sTableProcessFuncMap, processFuncTraces, procFuncVtMap);
         }
         catch (Exception e)
@@ -151,8 +247,10 @@ public class IPCAnalyzer extends AbstractAnalyzer
 
                 Address thisAddr = aSpace.getAddress(mem.getLong(rttiAddr.add(0x8)));
                 MemoryBlock thisBlock = mem.getBlock(thisAddr);
-                
-                if (thisBlock == null || thisBlock.getName().equals(".rodata"))
+
+                // FIX 2: use startsWith(".rodata") instead of equals(".rodata") to handle
+                // split rodata sections (.rodata.1, .rodata.2, etc.)
+                if (thisBlock == null || !thisBlock.getName().startsWith(".rodata"))
                     continue;
 
                 String symbol = elfProvider.getReader().readAsciiString(thisAddr.getOffset());
@@ -181,17 +279,29 @@ public class IPCAnalyzer extends AbstractAnalyzer
         // and thus that value can be used to distinguish a virtual table vs a non-virtual table.
         // Here we locate the address of that function.
         long knownAddress = 0;
-        
+
         for (Address addr : knownVTabAddrs.values())
         {
             long curKnownAddr = mem.getLong(addr.add(0x20));
-            
+
+            // Handle the case where the GOT entry points to the RTTI slot rather than
+            // offset-to-top, making the vtable base appear 8 bytes early
             if (knownAddress == 0)
             {
-                knownAddress = curKnownAddr; 
+                knownAddress = curKnownAddr;
             }
-            else if (knownAddress != curKnownAddr) 
-                return out;
+            else if (knownAddress != curKnownAddr)
+            {
+                // Try +0x28 in case this entry is shifted by 8
+                long shifted = mem.getLong(addr.add(0x28));
+                if (shifted == knownAddress)
+                {
+                    // This entry's GOT ptr is 8 bytes early — replace it in the map
+                    // We'll handle the shift in the second loop
+                }
+                else
+                    return out;
+            }
         }
         
         Msg.info(this, String.format("Known service address: 0x%x", knownAddress));
@@ -205,13 +315,29 @@ public class IPCAnalyzer extends AbstractAnalyzer
             {
                 if (vtBlock != null && vtBlock.getName().equals(".data"))
                 {
-                    if (knownAddress == mem.getLong(vtAddr.add(0x20)))
+                    long at20 = 0, at28 = 0;
+                    try { at20 = mem.getLong(vtAddr.add(0x20)); } catch (MemoryAccessException e2) {}
+                    try { at28 = mem.getLong(vtAddr.add(0x28)); } catch (MemoryAccessException e2) {}
+                    
+                    if (at20 == knownAddress || at28 == knownAddress)
+                    {
+                        Msg.info(this, String.format(
+                            "Candidate vtAddr=0x%X: at+0x20=0x%X, at+0x28=0x%X, knownAddress=0x%X, match=%s",
+                            vtAddr.getOffset(), at20, at28, knownAddress,
+                            at20 == knownAddress ? "+0x20" : "+0x28"));
+                    }
+                    
+                    if (at20 == knownAddress)
                     {
                         out.add(vtAddr);
                     }
+                    else if (at28 == knownAddress)
+                    {
+                        out.add(vtAddr.add(0x8));
+                    }
                 }
             }
-            catch (MemoryAccessException e) // Skip entries with out of bounds offsets
+            catch (Exception e)
             {
                 continue;
             }
@@ -220,7 +346,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         return out;
     }
     
-    protected List<IPCVTableEntry> createVTableEntries(Program program, ElfCompatibilityProvider elfProvider, List<Address> vtAddrs) throws MemoryAccessException, AddressOutOfBoundsException, IOException
+    protected List<IPCVTableEntry> createVTableEntries(Program program, ElfCompatibilityProvider elfProvider, List<Address> vtAddrs, Map<Address, String> rttiNames) throws MemoryAccessException, AddressOutOfBoundsException, IOException
     {
         List<IPCVTableEntry> out = Lists.newArrayList();
         Memory mem = program.getMemory();
@@ -232,31 +358,66 @@ public class IPCAnalyzer extends AbstractAnalyzer
             long rttiBase = mem.getLong(vtAddr.add(0x8));
             String name = String.format("SRV_%X::vtable", vtOff);
             
-            // Attempt to find the name if the vtable has RTTI
             if (rttiBase != 0)
             {
                 Address rttiBaseAddr = aSpace.getAddress(rttiBase);
                 MemoryBlock rttiBaseBlock = mem.getBlock(rttiBaseAddr);
                 
-                // RTTI must be within the data block
-                if (rttiBaseBlock != null && rttiBaseBlock.getName().equals(".data"))
+                if (rttiBaseBlock == null)
+                {
+                    Msg.debug(this, String.format("VT 0x%X: rttiBaseBlock is null for addr 0x%X", vtOff, rttiBase));
+                }
+                else if (!rttiBaseBlock.getName().equals(".data"))
+                {
+                    Msg.debug(this, String.format("VT 0x%X: rttiBaseBlock name is '%s' (not .data) for addr 0x%X", vtOff, rttiBaseBlock.getName(), rttiBase));
+                }
+                else
                 {
                     Address thisAddr = aSpace.getAddress(mem.getLong(rttiBaseAddr.add(0x8)));
                     MemoryBlock thisBlock = mem.getBlock(thisAddr);
                     
-                    if (thisBlock != null && thisBlock.getName().equals(".rodata"))
+                    if (thisBlock == null)
                     {
+                        Msg.debug(this, String.format("VT 0x%X: thisBlock is null for addr 0x%X", vtOff, thisAddr.getOffset()));
+                    }
+                    // FIX 1: was "thisBlock != null && thisBlock.getName().startsWith(".rodata")"
+                    // which is inverted — it logged "not .rodata" when rodata WAS found, and fell
+                    // through to the bare else (symbol read) only when rodata was NOT found.
+                    // Correct logic: skip with a debug message when the block does NOT start with
+                    // ".rodata"; read the symbol when it DOES start with ".rodata".
+                    else if (!thisBlock.getName().startsWith(".rodata"))
+                    {
+                        Msg.debug(this, String.format("VT 0x%X: thisBlock name is '%s' (not .rodata) for addr 0x%X", vtOff, thisBlock.getName(), thisAddr.getOffset()));
+                    }
+                    else
+                    {
+                        // thisBlock starts with ".rodata" — safe to read the symbol
                         String symbol = elfProvider.getReader().readAsciiString(thisAddr.getOffset());
+                        Msg.debug(this, String.format("VT 0x%X: found symbol '%s'", vtOff, symbol));
                         
                         if (!symbol.isEmpty() && symbol.length() <= 512)
                         {
-                            if (!symbol.startsWith("_Z"))
-                                symbol = "_ZTV" + symbol;
+                        if (!symbol.startsWith("_Z"))
+                            symbol = "_ZTV" + symbol;
                             
-                            name = demangleIpcSymbol(symbol);
-                        }
+                        name = demangleIpcSymbol(symbol);
+                        if (name.equals(symbol) || name.startsWith("_ZTV"))
+                            name = parseMangledVtableName(symbol);
                     }
                 }
+            }
+            }
+            else
+            {
+                Msg.debug(this, String.format("VT 0x%X: rttiBase is 0 (no RTTI)", vtOff));
+            }
+
+            // FIX 3: if inline RTTI didn't resolve a name, fall back to the pre-built rttiNames map
+            if (name.startsWith("SRV_") && rttiNames != null && rttiNames.containsKey(vtAddr))
+            {
+                String rttiResolved = rttiNames.get(vtAddr);
+                Msg.info(this, String.format("VT 0x%X: using rttiNames fallback -> '%s'", vtOff, rttiResolved));
+                name = rttiResolved;
             }
             
             Map<Address, Address> gotDataSyms = this.getGotDataSyms(program, elfProvider);
@@ -275,7 +436,12 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     implAddrs.add(funcAddr);
                     funcVtOff += 0x8;
                 }
-                else break;
+                else
+                {
+                    Msg.debug(this, String.format("VT 0x%X: function at offset 0x%X (0x%X) is not in .text (block: %s)", 
+                        vtOff, funcVtOff, funcOff, funcAddrBlock != null ? funcAddrBlock.getName() : "null"));
+                    break;
+                }
             
                 if (gotDataSyms.containsValue(vtAddr.add(funcVtOff)))
                 {
@@ -283,12 +449,20 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 }
             }
             
+            // Debug: log when no functions found
+            if (implAddrs.isEmpty())
+            {
+                long firstOffset = mem.getLong(vtAddr.add(0x30));
+                Msg.debug(this, String.format("VT 0x%X: No .text functions found in vtable (first offset at 0x30: 0x%X)", vtOff, firstOffset));
+            }
+            
             Set<Address> uniqueAddrs = new HashSet<>(implAddrs);
             
             // There must be either 1 unique function without repeats, or more than one unique function with repeats allowed
             if (uniqueAddrs.size() <= 1 && implAddrs.size() != 1)
             {
-                Msg.warn(this, String.format("Insufficient unique addresses for vtable at 0x%X", vtAddr.getOffset()));
+                Msg.warn(this, String.format("Insufficient unique addresses for vtable at 0x%X (found %d functions, %d unique)", 
+                    vtAddr.getOffset(), implAddrs.size(), uniqueAddrs.size()));
                 
                 for (Address addr : uniqueAddrs)
                 {
@@ -316,70 +490,78 @@ public class IPCAnalyzer extends AbstractAnalyzer
         AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
         Address baseAddr = program.getImageBase();
         Memory mem = program.getMemory();
-        
-        for (NXRelocation reloc : elfProvider.getRelocations()) 
+
+        for (NXRelocation reloc : elfProvider.getRelocations())
         {
             if (reloc.addend > 0) {
                 candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
             }
             else if (reloc.r_type == R_FAKE_RELR) {
                 reloc.addend = mem.getLong(baseAddr.add(reloc.offset)) - baseAddr.getOffset();
-                candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
+                if (reloc.addend > 0)
+                    candidates.add(new Pair<>(baseAddr.getOffset() + reloc.addend, baseAddr.getOffset() + reloc.offset));
             }
         }
-        
+
+        Msg.info(this, String.format("locateSTables: built %d relocation candidates", candidates.size()));
+
         candidates.sort(Comparator.comparing(a -> a.first));
-        
-        
-        // 5.x: match on the "SFCI" constant used in the template of s_Table
-        //   MOV  W?, #0x4653
-        //   MOVK W?, #0x4943, LSL#16
+
         long movMask  = 0x5288CAL;
         long movkMask = 0x72A928L;
-        
-        MemoryBlock text = mem.getBlock(".text"); // Text is one of the few blocks that isn't split
-        
+
+        MemoryBlock text = mem.getBlock(".text");
+        int sfciMatchCount = 0;
+        int sTableFoundCount = 0;
+
         try
         {
             for (long off = text.getStart().getOffset(); off < text.getEnd().getOffset() - 0x4; off += 0x4)
             {
                 long val1 = (elfProvider.getReader().readUnsignedInt(off) & 0xFFFFFF00L) >> 8;
                 long val2 = (elfProvider.getReader().readUnsignedInt(off + 0x4) & 0xFFFFFF00L) >> 8;
-                
-                // Match on a sequence of MOV, MOVK
+
                 if (val1 == movMask && val2 == movkMask)
                 {
+                    sfciMatchCount++;
                     long processFuncOffset = 0;
                     long sTableOffset = 0;
-                    
-                    // Find the candidate after our offset, then pick the one before that
+
                     for (Pair<Long, Long> candidate : candidates)
                     {
                         if (candidate.first > off)
                             break;
-                        
+
                         processFuncOffset = candidate.first;
                         sTableOffset = candidate.second;
                     }
-                    
+
+                    if (processFuncOffset == 0) {
+                        Msg.warn(this, String.format("  SFCI at 0x%X: no candidate found before this offset", off));
+                        continue;
+                    }
+
                     long pRetOff;
-                    
-                    // Make sure our SFCI offset is within the process function by matching on the
-                    // RET instruction
                     for (pRetOff = processFuncOffset; pRetOff < text.getEnd().getOffset(); pRetOff += 0x4)
                     {
                         long rval = elfProvider.getReader().readUnsignedInt(pRetOff);
-                        
-                        // RET
                         if (rval == 0xD65F03C0L)
                             break;
                     }
-                    
+
                     if (pRetOff > off)
                     {
                         Address stAddr = aSpace.getAddress(sTableOffset);
                         Address pFuncAddr = aSpace.getAddress(processFuncOffset);
                         out.put(stAddr, pFuncAddr);
+                        sTableFoundCount++;
+                        Msg.info(this, String.format("  s_Table 0x%X -> process_func 0x%X (SFCI at 0x%X)",
+                            sTableOffset, processFuncOffset, off));
+                    }
+                    else
+                    {
+                        Msg.warn(this, String.format("  SFCI at 0x%X: RET not found after process_func 0x%X (ret scan ended at 0x%X)",
+                            off, processFuncOffset, pRetOff));
                     }
                 }
             }
@@ -388,10 +570,21 @@ public class IPCAnalyzer extends AbstractAnalyzer
         {
             Msg.error(this, "Failed to locate s_Tables", e);
         }
-        
+
+        Msg.info(this, String.format("locateSTables: found %d SFCI patterns, %d s_Tables", sfciMatchCount, sTableFoundCount));
+
+        // If nothing found, the SDK may use a different dispatch pattern.
+        // Try the 6.x+ "SFCO" reply magic as a secondary signal, or log that
+        // the binary may use a newer dispatch mechanism.
+        if (out.isEmpty()) {
+            Msg.warn(this, "locateSTables: no s_Tables found via SFCI scan. " +
+                "The binary may use a newer SDK dispatch mechanism (post-6.x tipc/cmif split). " +
+                "Consider checking for SFCO (0x4F434653) or direct vtable dispatch.");
+        }
+
         return out;
     }
-    
+        
     protected Multimap<Address, IPCTrace> emulateProcessFunctions(Program program, TaskMonitor monitor, Set<Address> procFuncAddrs)
     {
         Multimap<Address, IPCTrace> out = HashMultimap.create();
@@ -407,6 +600,83 @@ public class IPCAnalyzer extends AbstractAnalyzer
         
         for (int preset : presets)
             cmdsToTry.add(preset);
+
+        // Newer SDK dispatchers use a few command-id ranges not covered by the
+        // historical preset list above. Keep these as candidates only; the emulator
+        // still has to prove the command exists by executing the process function.
+        int[] additionalCandidates = new int[] {
+            142, 143, 144, 147, 148,
+            152, 153, 154, 155, 156, 157, 158, 159,
+            161, 162, 163, 164, 165, 166, 167, 168, 169,
+            170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+            180, 181, 182, 191,
+            219, 224, 225, 226,
+            253, 271,
+            292, 293,
+            330, 340, 341, 342, 351, 352, 353, 360, 370,
+            413, 414, 415, 416, 417, 418, 419,
+            420, 421, 422, 423, 424, 425, 426, 427, 428, 429,
+            430, 431, 450, 460,
+            509, 514, 515, 516, 517, 518, 519,
+            615, 616, 617, 618, 632,
+            650, 651, 660,
+            710, 720, 810, 820,
+            910, 911, 912, 913, 914, 915, 916, 917, 918, 919,
+            920, 921, 922, 923, 924, 925, 926, 927, 928, 929,
+            930, 931, 933, 934, 935, 936,
+            1014, 1015, 1016, 1017, 1018, 1019,
+            1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030,
+            1050,
+            1110, 1111, 1112, 1113, 1114,
+            1120, 1121, 1122, 1123, 1124,
+            1308, 1309, 1310, 1311, 1312, 1313, 1314,
+            1506, 1508, 1509, 1510, 1511, 1512,
+            1604, 1605, 1606,
+            1704, 1705, 1706,
+            1903,
+            2018, 2019,
+            2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029,
+            2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039,
+            2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047, 2048, 2049,
+            2060, 2070,
+            2100,
+            2150, 2151, 2152, 2153, 2154, 2155, 2156,
+            2160, 2161,
+            2170, 2171,
+            2180, 2181, 2182, 2183,
+            2190, 2199, 2200, 2250,
+            2350, 2351, 2352, 2353, 2354, 2355, 2356, 2357, 2358, 2359,
+            2360, 2361, 2362, 2363, 2364, 2365, 2366, 2367, 2368, 2369,
+            2500, 2502,
+            2510, 2511, 2513, 2514, 2515, 2516, 2517, 2518, 2519,
+            2520, 2521, 2522, 2523, 2524, 2525,
+            2800,
+            3003, 3004, 3005, 3006, 3007, 3008, 3009,
+            3010, 3011, 3012, 3013, 3014, 3015,
+            3050,
+            3100, 3101, 3102, 3104, 3105, 3150,
+            4000, 4004,
+            4006, 4007, 4008, 4009,
+            4010, 4011, 4012, 4013, 4015, 4017, 4019,
+            4020, 4021, 4022, 4023, 4024, 4025, 4026, 4027, 4028, 4029,
+            4030, 4031, 4032, 4033, 4034, 4035, 4037, 4038, 4039,
+            4040, 4041, 4042, 4043, 4044, 4045, 4046, 4049,
+            4050, 4051, 4052, 4053, 4054, 4055, 4056, 4057, 4058, 4059,
+            4060, 4061, 4062, 4063, 4064, 4065, 4066, 4067, 4068, 4069,
+            4070, 4071, 4072, 4073, 4074, 4075, 4076, 4077, 4078, 4079,
+            4080, 4081, 4083, 4084, 4085, 4086, 4087, 4088, 4089,
+            4090, 4091, 4092, 4093, 4094, 4095, 4096, 4097, 4099,
+            5000, 5001,
+            7988, 7989, 7991,
+            8003, 8004,
+            9010, 9013, 9014, 9015, 9016, 9018, 9019, 9022, 9025, 9026,
+            9999, 10000
+        };
+
+        for (int candidate : additionalCandidates)
+            cmdsToTry.add(candidate);
+
+        addDatabaseCommandIds(cmdsToTry);
         
         Multimap<Address, IPCTrace> map = HashMultimap.create();
         
@@ -445,12 +715,127 @@ public class IPCAnalyzer extends AbstractAnalyzer
         
         return out;
     }
-    
+
+    private static void addDatabaseCommandIds(Set<Integer> cmdsToTry)
+    {
+        int before = cmdsToTry.size();
+
+        for (Map<String, String> ifaceCmds : IPCDatabase.getInstance().getAllInterfaces().values())
+        {
+            for (String cmdId : ifaceCmds.keySet())
+            {
+                try
+                {
+                    cmdsToTry.add(Integer.parseInt(cmdId));
+                }
+                catch (NumberFormatException e)
+                {
+                    Msg.warn(IPCAnalyzer.class, String.format("Skipping non-integer IPC database command id '%s'", cmdId));
+                }
+            }
+        }
+
+        Msg.info(IPCAnalyzer.class, String.format("Added %d IPC database command ids to emulator candidates", cmdsToTry.size() - before));
+    }
+
+    private static InterfaceMatch findBestInterfaceMatch(Map<String, Map<String, String>> allIfaces, Set<Long> emulatedCmds)
+    {
+        InterfaceMatch bestMatch = null;
+
+        for (Map.Entry<String, Map<String, String>> dbEntry : allIfaces.entrySet())
+        {
+            Set<String> dbCmds = dbEntry.getValue().keySet();
+            int score = 0;
+
+            for (Long cmdId : emulatedCmds)
+            {
+                if (dbCmds.contains(String.valueOf(cmdId)))
+                    score++;
+            }
+
+            if (score == 0)
+                continue;
+
+            InterfaceMatch match = new InterfaceMatch(dbEntry.getKey(), score, emulatedCmds.size(), dbCmds.size());
+            if (!match.isGoodEnough())
+                continue;
+
+            if (bestMatch == null || match.isBetterThan(bestMatch))
+                bestMatch = match;
+        }
+
+        return bestMatch;
+    }
+
+    private static class InterfaceMatch
+    {
+        private final String iface;
+        private final int score;
+        private final int emulatedCmdCount;
+        private final int dbCmdCount;
+
+        private InterfaceMatch(String iface, int score, int emulatedCmdCount, int dbCmdCount)
+        {
+            this.iface = iface;
+            this.score = score;
+            this.emulatedCmdCount = emulatedCmdCount;
+            this.dbCmdCount = dbCmdCount;
+        }
+
+        private double emulatedCoverage()
+        {
+            return (double)this.score / this.emulatedCmdCount;
+        }
+
+        private double databaseCoverage()
+        {
+            return (double)this.score / this.dbCmdCount;
+        }
+
+        private boolean isGoodEnough()
+        {
+            if (this.emulatedCmdCount <= 2)
+                return this.score == this.emulatedCmdCount && this.dbCmdCount <= this.emulatedCmdCount + 1;
+
+            return (this.score >= 2 && this.emulatedCoverage() >= 0.3) ||
+                (this.emulatedCmdCount <= 5 && this.score == this.emulatedCmdCount);
+        }
+
+        private boolean isBetterThan(InterfaceMatch other)
+        {
+            int cmp = Integer.compare(this.score, other.score);
+            if (cmp != 0)
+                return cmp > 0;
+
+            cmp = Double.compare(this.emulatedCoverage(), other.emulatedCoverage());
+            if (cmp != 0)
+                return cmp > 0;
+
+            cmp = Double.compare(this.databaseCoverage(), other.databaseCoverage());
+            if (cmp != 0)
+                return cmp > 0;
+
+            return this.dbCmdCount < other.dbCmdCount;
+        }
+    }
+
     protected HashBiMap<Address, IPCVTableEntry> matchVtables(List<IPCVTableEntry> vtEntries, Set<Address> procFuncAddrs, Multimap<Address, IPCTrace> processFuncTraces)
     {
         // Map process func addrs to vtable addrs
         HashBiMap<Address, IPCVTableEntry> out = HashBiMap.create();
-        List<IPCVTableEntry> possibilities = Lists.newArrayList(vtEntries.iterator());
+        
+        // Filter out vtables with 0 functions - these are likely proxy/client interfaces, not dispatchers
+        List<IPCVTableEntry> dispatcherVtables = vtEntries.stream()
+            .filter(entry -> entry.ipcFuncs.size() > 0)
+            .collect(Collectors.toList());
+        
+        List<IPCVTableEntry> possibilities = Lists.newArrayList(dispatcherVtables.iterator());
+        
+        if (dispatcherVtables.size() < vtEntries.size())
+        {
+            Msg.info(this, String.format("Skipping %d proxy/client vtables with 0 functions", 
+                vtEntries.size() - dispatcherVtables.size()));
+        }
         
         for (Address procFuncAddr : procFuncAddrs)
         {
@@ -507,9 +892,13 @@ public class IPCAnalyzer extends AbstractAnalyzer
             Msg.info(this, String.format("Unmatched process func at 0x%X. Calculated VTable Size: 0x%X", addr.getOffset(), getProcFuncVTableSize(processFuncTraces, addr)));
         }
         
+        // Only report unmatched dispatcher vtables (size > 0), as size-0 proxy vtables are expected to not match
         for (IPCVTableEntry entry : possibilities)
         {
-            Msg.info(this, String.format("Unmatched IPC VTable entry at 0x%X. VTable Size: 0x%X", entry.addr.getOffset(), entry.ipcFuncs.size()));
+            if (entry.ipcFuncs.size() > 0)
+            {
+                Msg.info(this, String.format("Unmatched IPC VTable entry at 0x%X. VTable Size: 0x%X", entry.addr.getOffset(), entry.ipcFuncs.size()));
+            }
         }
         
         return out;
@@ -603,9 +992,42 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     
                     Address vtOffsetAddr = entry.addr.add(0x10 + trace.vtOffset);
                     Address ipcCmdImplAddr = aSpace.getAddress(program.getMemory().getLong(vtOffsetAddr));
-                    
-                    if (!this.hasImportedSymbol(program, ipcCmdImplAddr))
-                        program.getSymbolTable().createLabel(ipcCmdImplAddr, String.format("%s::Cmd%d", entryNameNoSuffix, trace.cmdId), null, SourceType.IMPORTED);
+
+                    Msg.debug(this, String.format("Looking up cmd: iface='%s' cmdId=%d", entryNameNoSuffix, trace.cmdId));
+                    String cmdName = IPCDatabase.getInstance().getCommandName(entryNameNoSuffix, trace.cmdId);
+                    Msg.debug(this, String.format("  result: %s", cmdName));
+                    String label;
+                    if (cmdName != null)
+                        label = String.format("%s::[%d]%s", entryNameNoSuffix, trace.cmdId, cmdName);
+                    else
+                        label = String.format("%s::Cmd%d", entryNameNoSuffix, trace.cmdId);
+
+                    if (!this.hasSymbolNamed(program, ipcCmdImplAddr, label))
+                    {
+                        try
+                        {
+                            program.getSymbolTable().createLabel(ipcCmdImplAddr, label, null, SourceType.IMPORTED);
+                        }
+                        catch (InvalidInputException e)
+                        {
+                            Msg.warn(this, String.format("Failed to create IPC command label '%s' at 0x%X: %s",
+                                label, ipcCmdImplAddr.getOffset(), e.getMessage()));
+                        }
+                    }
+
+                    Address ipcCmdTargetAddr = this.findDirectThunkTarget(program, ipcCmdImplAddr);
+                    if (ipcCmdTargetAddr != null && !this.hasSymbolNamed(program, ipcCmdTargetAddr, label))
+                    {
+                        try
+                        {
+                            program.getSymbolTable().createLabel(ipcCmdTargetAddr, label, null, SourceType.IMPORTED);
+                        }
+                        catch (InvalidInputException e)
+                        {
+                            Msg.warn(this, String.format("Failed to create IPC command target label '%s' at 0x%X: %s",
+                                label, ipcCmdTargetAddr.getOffset(), e.getMessage()));
+                        }
+                    }
                     
                     String implComment = """
                             IPC INFORMATION
@@ -653,6 +1075,37 @@ public class IPCAnalyzer extends AbstractAnalyzer
             Msg.error(this, "Failed to markup IPC", e);
         }
     }
+
+    private Address findDirectThunkTarget(Program program, Address thunkAddr)
+    {
+        Instruction instruction = program.getListing().getInstructionAt(thunkAddr);
+
+        for (int i = 0; instruction != null && i < 8; i++)
+        {
+            FlowType flowType = instruction.getFlowType();
+            Address[] flows = instruction.getFlows();
+
+            if (flowType.isComputed() || flowType.isConditional())
+                return null;
+
+            if (flows.length == 1 && (flowType.isJump() || flowType.isCall()) && flowType.isTerminal())
+            {
+                Address target = flows[0];
+
+                if (target.equals(thunkAddr) || target.equals(instruction.getAddress()))
+                    return null;
+
+                return target;
+            }
+
+            if (flowType.isTerminal())
+                return null;
+
+            instruction = instruction.getNext();
+        }
+
+        return null;
+    }
     
     protected int getProcFuncVTableSize(Multimap<Address, IPCTrace> processFuncTraces, Address procFuncAddr)
     {
@@ -669,6 +1122,9 @@ public class IPCAnalyzer extends AbstractAnalyzer
             if (maxTrace == null || trace.vtOffset > maxTrace.vtOffset)
                 maxTrace = trace;
         }
+        
+        if (maxTrace == null)
+            return processFuncTraces.get(procFuncAddr).size();
         
         return (int)Math.max(processFuncTraces.get(procFuncAddr).size(), (maxTrace.vtOffset + 8 - 0x20) / 8);
     }
@@ -768,6 +1224,10 @@ public static String demangleIpcSymbol(String mangled)
     public static String shortenIpcSymbol(String longSym)
     {
         String out = longSym;
+
+        if (out.startsWith("_ZTV"))
+            return parseMangledVtableName(out);
+
         String suffix = out.substring(out.lastIndexOf(':') + 1);
         
         if (out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatelessAllocator<") || out.startsWith("nn::sf::detail::ObjectImplFactoryWithStatefulAllocator<"))
@@ -805,6 +1265,17 @@ public static String demangleIpcSymbol(String mangled)
         
         return false;
     }
+
+    public boolean hasSymbolNamed(Program program, Address addr, String name)
+    {
+        for (Symbol sym : program.getSymbolTable().getSymbols(addr))
+        {
+            if (sym.getName(true).equals(name) || sym.getName().equals(name))
+                return true;
+        }
+
+        return false;
+    }
     
     protected int createPointer(Program program, Address address)
     {
@@ -840,4 +1311,299 @@ public static String demangleIpcSymbol(String mangled)
             this.ipcFuncs = ImmutableList.copyOf(ipcFuncs);
         }
     }
+
+    private Map<Address, String> buildRttiNameMap(Program program, ElfCompatibilityProvider elfProvider)
+            throws MemoryAccessException, IOException
+    {
+        Map<Address, String> result = new HashMap<>();
+        Memory mem = program.getMemory();
+        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
+
+        // Step 1: collect all mangled type name strings from rodata blocks,
+        // keyed by their address.
+        Map<Long, String> stringAddrToName = new HashMap<>();
+
+        for (MemoryBlock block : mem.getBlocks())
+        {
+            if (!block.getName().startsWith(".rodata") || !block.isInitialized())
+                continue;
+
+            long start = block.getStart().getOffset();
+            long end   = block.getEnd().getOffset();
+
+            // Scan for null-terminated strings that look like mangled type names
+            long pos = start;
+            while (pos < end)
+            {
+                try
+                {
+                    String s = elfProvider.getReader().readAsciiString(pos);
+                    if (s.length() >= 4 && s.length() <= 256
+                        && (Character.isDigit(s.charAt(0)) || s.charAt(0) == 'N'))
+                    {
+                        // Looks like a mangled Itanium type name
+                        stringAddrToName.put(pos, s);
+                    }
+                    pos += s.length() + 1;
+                    if (s.isEmpty()) pos = pos + 1; // skip runs of nulls faster
+                }
+                catch (Exception e) { pos++; }
+            }
+        }
+
+        Msg.info(this, String.format("RTTI scan: found %d candidate type name strings", stringAddrToName.size()));
+
+        if (stringAddrToName.isEmpty())
+            return result;
+
+        // Step 2: scan .data to find type_info objects.
+        // type_info layout (Itanium ABI):
+        //   +0x00  ptr to type_info vtable (e.g. __si_class_type_info)
+        //   +0x08  ptr to type name string (in rodata)
+        // We find these by looking for .data pointers into our string set.
+
+        Map<Long, Long> stringAddrToTypeInfo = new HashMap<>(); // typeInfoAddr -> stringAddr
+
+        for (MemoryBlock block : mem.getBlocks())
+        {
+            if (!block.getName().equals(".data") || !block.isInitialized())
+                continue;
+
+            long start = block.getStart().getOffset();
+            long end   = block.getEnd().getOffset();
+
+            for (long off = start; off <= end - 0x10; off += 0x8)
+            {
+                long val;
+                try { val = mem.getLong(aSpace.getAddress(off)); }
+                catch (MemoryAccessException e) { continue; }
+
+                if (stringAddrToName.containsKey(val))
+                {
+                    // off is type_info+0x8, so type_info is at off-0x8
+                    long typeInfoAddr = off - 0x8;
+                    stringAddrToTypeInfo.put(typeInfoAddr, val);
+                }
+            }
+        }
+
+        Msg.info(this, String.format("RTTI scan: found %d type_info objects", stringAddrToTypeInfo.size()));
+
+        // Step 3: scan .data for vtables pointing to these type_info objects.
+        // vtable layout: [offset_to_top=0][rtti_ptr=type_info_addr][vfuncs...]
+        // vtable+0x08 == type_info address
+
+        String pendingInterfaceVtableName = null;
+        long pendingInterfaceVtableOff = 0;
+
+        for (MemoryBlock block : mem.getBlocks())
+        {
+            if (!block.getName().equals(".data") || !block.isInitialized())
+                continue;
+
+            long start = block.getStart().getOffset();
+            long end   = block.getEnd().getOffset();
+
+            for (long off = start; off <= end - 0x10; off += 0x8)
+            {
+                long val;
+                try { val = mem.getLong(aSpace.getAddress(off + 0x8)); }
+                catch (MemoryAccessException e) { continue; }
+
+                if (!stringAddrToTypeInfo.containsKey(val))
+                    continue;
+
+                long stringAddr = stringAddrToTypeInfo.get(val);
+                String mangledTypeName = stringAddrToName.get(stringAddr);
+
+                // Demangle: _ZTV prefix = vtable for X
+                String symbol = "_ZTV" + mangledTypeName;
+                String demangled = demangleIpcSymbol(symbol);
+
+                Msg.debug(this, String.format("Demangling '%s' -> '%s'", symbol, demangled));
+
+                // If demangling failed (returned the mangled form), skip non-IPC vtables
+                // but store what we have regardless
+                String shortName;
+                if (demangled.equals(symbol) || demangled.startsWith("_ZTV"))
+                {
+                    // Demangling failed — try to extract a useful name from the raw string.
+                    // Raw Itanium: N2nn5fssrv2sf16IFileSystemProxyE
+                    // We can parse it manually as a fallback.
+                    shortName = parseMangledTypeName(mangledTypeName) + "::vtable";
+                }
+                else
+                {
+                    shortName = shortenIpcSymbol(demangled);
+                }
+
+                if (!isPotentialIpcVtableName(shortName))
+                {
+                    Msg.debug(this, String.format("RTTI scan: skipping non-IPC vtable 0x%X -> %s", off, shortName));
+                    continue;
+                }
+
+                Address vtAddr = aSpace.getAddress(off);
+
+                // Verify this is actually a dispatcher vtable by checking that +0x30 points into .text.
+                // If not, try +0x8 in case the address is off by one slot.
+                try
+                {
+                    long funcPtr = mem.getLong(vtAddr.add(0x30));
+                    Address funcAddr = aSpace.getAddress(funcPtr);
+                    MemoryBlock funcBlock = mem.getBlock(funcAddr);
+                    
+                    if (funcBlock == null || !funcBlock.getName().equals(".text"))
+                    {
+                        // Try shifting by +0x8
+                        Address shiftedVtAddr = vtAddr.add(0x8);
+                        long shiftedFuncPtr = mem.getLong(shiftedVtAddr.add(0x30));
+                        Address shiftedFuncAddr = aSpace.getAddress(shiftedFuncPtr);
+                        MemoryBlock shiftedFuncBlock = mem.getBlock(shiftedFuncAddr);
+                        
+                        if (shiftedFuncBlock != null && shiftedFuncBlock.getName().equals(".text"))
+                        {
+                            Msg.info(this, String.format("RTTI scan: shifting vtable 0x%X -> 0x%X (first func in .text after +0x8)", off, shiftedVtAddr.getOffset()));
+                            vtAddr = shiftedVtAddr;
+                        }
+                        else
+                        {
+                            // Neither offset has .text functions — skip this entry
+                            Msg.debug(this, String.format("RTTI scan: skipping 0x%X, no .text functions at +0x30 or +0x38", off));
+                            if (isConcreteServiceInterfaceVtableName(shortName))
+                            {
+                                pendingInterfaceVtableName = shortName;
+                                pendingInterfaceVtableOff = off;
+                                Msg.debug(this, String.format("RTTI scan: pending interface name %s from 0x%X", shortName, off));
+                            }
+                            continue;
+                        }
+                    }
+                }
+                catch (MemoryAccessException e)
+                {
+                    continue;
+                }
+
+                if (isGenericServiceObjectImplVtableName(shortName)
+                    && pendingInterfaceVtableName != null
+                    && off >= pendingInterfaceVtableOff
+                    && off - pendingInterfaceVtableOff <= 0x200)
+                {
+                    Msg.info(this, String.format("RTTI scan: mapping generic service vtable 0x%X to pending interface %s from 0x%X",
+                        vtAddr.getOffset(), pendingInterfaceVtableName, pendingInterfaceVtableOff));
+                    shortName = pendingInterfaceVtableName;
+                    pendingInterfaceVtableName = null;
+                }
+
+                result.put(vtAddr, shortName);
+                Msg.info(this, String.format("RTTI resolved: 0x%X -> %s", vtAddr.getOffset(), shortName));
+            }
+        }
+
+        Msg.info(this, String.format("RTTI scan: resolved %d vtable names", result.size()));
+        return result;
+    }
+
+    private static String parseMangledTypeName(String mangled)
+    {
+        // Parses Itanium nested name encoding like:
+        // N2nn5fssrv2sf16IFileSystemProxyE -> nn::fssrv::sf::IFileSystemProxy
+        // N2nn2sf14IServiceObjectE         -> nn::sf::IServiceObject
+        if (mangled.startsWith("N") && mangled.endsWith("E"))
+        {
+            StringBuilder result = new StringBuilder();
+            int i = 1; // skip leading N
+            int end = mangled.length() - 1; // skip trailing E
+            
+            while (i < end)
+            {
+                // Read length prefix
+                int numStart = i;
+                while (i < end && Character.isDigit(mangled.charAt(i)))
+                    i++;
+                
+                if (i == numStart)
+                    break; // no digits found, malformed
+                
+                int len;
+                try { len = Integer.parseInt(mangled.substring(numStart, i)); }
+                catch (NumberFormatException e) { break; }
+                
+                if (i + len > end)
+                    break;
+                
+                if (result.length() > 0)
+                    result.append("::");
+                result.append(mangled, i, i + len);
+                i += len;
+            }
+            
+            return result.length() > 0 && i == end ? result.toString() : mangled;
+        }
+        
+        // Simple non-nested name like 14IServiceObject -> just the name part
+        int i = 0;
+        while (i < mangled.length() && Character.isDigit(mangled.charAt(i)))
+            i++;
+        if (i > 0 && i < mangled.length())
+            return mangled.substring(i);
+        
+        return mangled;
+    }
+
+    private static boolean isPotentialIpcVtableName(String name)
+    {
+        if (name == null || !name.endsWith("::vtable"))
+            return false;
+
+        String typeName = name.substring(0, name.length() - "::vtable".length());
+
+        if (typeName.startsWith("SRV_"))
+            return true;
+
+        if (!typeName.startsWith("nn::"))
+            return false;
+
+        return typeName.contains("::sf::")
+            || typeName.contains("::cmif::")
+            || typeName.contains("::hipc::")
+            || typeName.contains("ServiceObject")
+            || typeName.contains("Interface")
+            || typeName.matches(".*::I[A-Z].*");
+    }
+
+    private static boolean isConcreteServiceInterfaceVtableName(String name)
+    {
+        if (!isPotentialIpcVtableName(name))
+            return false;
+
+        String typeName = name.substring(0, name.length() - "::vtable".length());
+        if (typeName.startsWith("nn::sf::"))
+            return false;
+
+        return typeName.matches(".*::I[A-Z].*");
+    }
+
+    private static boolean isGenericServiceObjectImplVtableName(String name)
+    {
+        return "nn::sf::impl::detail::ServiceObjectImplBase2::vtable".equals(name);
+    }
+
+    private static String parseMangledVtableName(String mangled)
+    {
+        String typeName = mangled;
+
+        if (typeName.startsWith("_ZTV"))
+            typeName = typeName.substring(4);
+        else if (typeName.startsWith("ZTV"))
+            typeName = typeName.substring(3);
+
+        String parsed = parseMangledTypeName(typeName);
+        if (parsed.equals(typeName))
+            return mangled;
+
+        return parsed + "::vtable";
+    }
+
 }

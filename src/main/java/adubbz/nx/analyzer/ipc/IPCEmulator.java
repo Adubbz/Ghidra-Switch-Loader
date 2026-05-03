@@ -231,7 +231,7 @@ public class IPCEmulator
         // returned objects. This tries to brute-force until we find an
         // input that passes that validation.
 
-        int[] bufferSizes = new int[] { 128, 33, 1 };
+        int[] bufferSizes = new int[] { 0x300, 128, 33, 1 };
         ByteBuffer nonZeroBuf = ByteBuffer.allocate(0x8 * 6);
         
         for (int i = 0; i < 6; i++) nonZeroBuf.putLong(1);
@@ -277,65 +277,72 @@ public class IPCEmulator
     {
         if (!this.hasSetup)
             return null;
-        
-        // We allocate a fixed 0x1000 for the buffer. Therefore we only allow adjustments to less than or equal
-        // to that.
+
         if (bufferSize < 0 || bufferSize > 0x1000)
             throw new RuntimeException("Invalid buffer size provided");
-        
+
         this.bufferSize = bufferSize;
-        
-        this.instructionHandlers.clear(); // Clear any existing instruction handlers
+        this.instructionHandlers.clear();
         this.currentTrace = new IPCTrace(cmd, procFuncAddr.getOffset());
-        
-        // Clear out any existing IPC message data
+
         byte[] zeros = new byte[(int)this.messageSize];
         this.state.setChunk(zeros, this.sLang.getDefaultSpace(), this.messagePtr, zeros.length);
-        
-        this.setLong(messagePtr, 0x49434653); // IPC Magic
-        this.setLong(messagePtr + 0x8, cmd); // Cmd ID
-        
+
+        this.setLong(messagePtr, 0x49434653);
+        this.setLong(messagePtr + 0x8, cmd);
+
         if (data != null && data.length > 0)
             this.state.setChunk(data, this.sLang.getDefaultSpace(), this.messagePtr + 0x10, data.length);
-        
-        // Set registers to point to our objects.
-        // We need to do this each time to reset the state
+
         this.state.setValue("x0", this.targetObjectPtr);
         this.state.setValue("x1", this.ipcObjectPtr);
         this.state.setValue("x2", this.messageStructPtr);
-        
-        // Set to the start of the process function
+
         emu.setExecuteAddress(procFuncAddr);
-        
-        // Disassemble the proc function so we can get instructions from it
         disassembler.disassemble(procFuncAddr, null);
-        
+
+        final int MAX_INSTRUCTIONS_WITH_META = 100_000;
+        final int MAX_INSTRUCTIONS_NO_META   = 500;
+        int instructionCount = 0;
+
         while (true)
         {
+            boolean hasMeta = this.currentTrace.bytesIn != -1;
+            int limit = hasMeta ? MAX_INSTRUCTIONS_WITH_META : MAX_INSTRUCTIONS_NO_META;
             long pc = state.getValue("pc");
-            Address pcAddr = this.sLang.getDefaultSpace().getAddress(pc);
-            
-            // Pre-process instructions
+
             for (Consumer<Long> instructionHandler : this.instructionHandlers)
-            {
                 instructionHandler.accept(pc);
-            }
-            
+
             if (emu.getExecuteAddress().getOffset() == 0)
+                break;
+
+            if (++instructionCount > limit)
             {
+                if (!hasMeta)
+                {
+                    // Silent — this is just a command that doesn't exist in this interface
+                }
+                else
+                {
+                    Msg.warn(this, String.format(
+                        "Emulation exceeded %d instructions for proc_func 0x%X cmd %d, aborting",
+                        limit, procFuncAddr.getOffset(), cmd));
+                }
                 break;
             }
-                
-            try 
+
+            try
             {
                 emu.executeInstruction(true, TaskMonitor.DUMMY);
-            } 
-            catch (CancelledException | LowlevelError e) 
+            }
+            catch (CancelledException | LowlevelError e)
             {
                 e.printStackTrace();
+                break; // also break on error rather than silently continuing
             }
         }
-        
+
         return this.currentTrace;
     }
     
@@ -450,90 +457,154 @@ public class IPCEmulator
         long metaInfoPtr = this.state.getValue("x1");
         long metaInfoSize = 0x90;
         byte[] metaInfo = new byte[(int)metaInfoSize];
-        
+
         if (metaInfoSize != this.state.getChunk(metaInfo, this.sLang.getDefaultSpace(), metaInfoPtr, metaInfo.length, true))
             throw new RuntimeException("Failed to read meta info");
-        
-        BinaryReader reader = new BinaryReader(new ByteArrayProvider(metaInfo), true);
-        
+
+        // Read a little-endian uint16 from a byte array
+        // Layouts: { baseOffset, useUint16 }
+        // [0] = base offset, [1] = 1 for uint16 fields, 0 for uint32 fields
+        // Added more offsets for compatibility with different SDK versions (especially 9.0.0)
+        int[][] layouts = new int[][] {
+            { 0x00, 1 },   // modern SDK: uint16 fields at 0x0
+            { 0x08, 0 },   // legacy SDK: uint32 fields at 0x8
+            { 0x10, 0 },   // legacy SDK: uint32 fields at 0x10
+            { 0x18, 0 },   // additional legacy SDK variant: uint32 fields at 0x18
+            { 0x20, 0 },   // additional legacy SDK variant: uint32 fields at 0x20
+        };
+
         try
         {
-            this.currentTrace.bytesIn = reader.readInt(0x8) - 0x10;
-            this.currentTrace.bytesOut = reader.readInt(0x10) - 0x10;
-            this.currentTrace.bufferCount = reader.readInt(0x18);
-            this.currentTrace.inInterfaces = reader.readInt(0x1C);
-            this.currentTrace.outInterfaces = reader.readInt(0x20);
-            this.currentTrace.inHandles = reader.readInt(0x24);
-            this.currentTrace.outHandles = reader.readInt(0x28);
-            
-            if (this.currentTrace.bytesIn < 0 || this.currentTrace.bytesIn > 0x1000L)
-                throw new RuntimeException("Invalid value for bytesIn!");
-            
-            if (this.currentTrace.bytesOut < 0 || this.currentTrace.bytesOut > 0x1000L)
-                throw new RuntimeException("Invalid value for bytesOut!");
-            
-            if (this.currentTrace.bufferCount > 20)
-                throw new RuntimeException("Too many buffers!");
-            
-            if (this.currentTrace.inInterfaces > 20)
-                throw new RuntimeException("Too many in interfaces!");
-            
-            if (this.currentTrace.outInterfaces > 20)
-                throw new RuntimeException("Too many out interfaces!");
-            
-            if (this.currentTrace.inHandles > 20)
-                throw new RuntimeException("Too many in handles!");
-            
-            if (this.currentTrace.outHandles > 20)
-                throw new RuntimeException("Too many out handles!");
-            
-            this.currentTrace.lr = this.state.getValue("x30");
-            
-            if (this.currentTrace.inInterfaces > 0)
+            for (int[] layout : layouts)
             {
-                // Add a handler to cheat the cmp x8, x9 that usually happens
-                this.instructionHandlers.add((off) -> 
+                int base = layout[0];
+                boolean wide = layout[1] == 0;
+
+                long rawBytesIn, rawBytesOut, bufferCount, inInterfaces, outInterfaces, inHandles, outHandles;
+
+                if (!wide)
                 {
-                    Address pcAddr = this.sLang.getDefaultSpace().getAddress(off);
-                    CodeManager codeManager = ((ProgramDB)this.program).getCodeManager();
-                    Instruction currentInstruction = codeManager.getInstructionAt(pcAddr);
-                    
-                    // Attempt to disassemble the instruction so we can try again
-                    if (currentInstruction == null)
+                    // Modern SDK layout:
+                    // [0x00] uint16 rawBytesIn
+                    // [0x02] uint16 rawBytesOut
+                    // [0x04] uint8  bufferCount
+                    // [0x05] uint8  inInterfaces
+                    // [0x06] uint8  outInterfaces
+                    // [0x07] uint8  inHandles
+                    // [0x08] uint8  outHandles
+                    rawBytesIn    = readU16LE(metaInfo, base + 0x00);
+                    rawBytesOut   = readU16LE(metaInfo, base + 0x02);
+                    bufferCount   = metaInfo[base + 0x04] & 0xFFL;
+                    inInterfaces  = metaInfo[base + 0x05] & 0xFFL;
+                    outInterfaces = metaInfo[base + 0x06] & 0xFFL;
+                    inHandles     = metaInfo[base + 0x07] & 0xFFL;
+                    outHandles    = metaInfo[base + 0x08] & 0xFFL;
+                }
+                else
+                {
+                    // uint32 little-endian reads (legacy SDK variants)
+                    rawBytesIn    = readU32LE(metaInfo, base + 0x00);
+                    rawBytesOut   = readU32LE(metaInfo, base + 0x08);
+                    bufferCount   = readU32LE(metaInfo, base + 0x10);
+                    inInterfaces  = readU32LE(metaInfo, base + 0x14);
+                    outInterfaces = readU32LE(metaInfo, base + 0x18);
+                    inHandles     = readU32LE(metaInfo, base + 0x1C);
+                    outHandles    = readU32LE(metaInfo, base + 0x20);
+                }
+
+                long bytesIn  = rawBytesIn  - 0x10;
+                long bytesOut = rawBytesOut - 0x10;
+
+                // Relaxed validation: allow slightly larger buffers for legacy SDKs
+                if (rawBytesIn  < 0x10 || rawBytesIn  > 0x4010L) continue;
+                if (rawBytesOut < 0x10 || rawBytesOut > 0x4010L) continue;
+                if (bufferCount  > 20) continue;
+                if (inInterfaces > 20) continue;
+                if (outInterfaces> 20) continue;
+                if (inHandles    > 20) continue;
+                if (outHandles   > 20) continue;
+
+                this.currentTrace.bytesIn       = bytesIn;
+                this.currentTrace.bytesOut      = bytesOut;
+                this.currentTrace.bufferCount   = bufferCount;
+                this.currentTrace.inInterfaces  = inInterfaces;
+                this.currentTrace.outInterfaces = outInterfaces;
+                this.currentTrace.inHandles     = inHandles;
+                this.currentTrace.outHandles    = outHandles;
+                this.currentTrace.lr            = this.state.getValue("x30");
+
+                if (this.currentTrace.inInterfaces > 0)
+                {
+                    this.instructionHandlers.add((off) ->
                     {
-                        disassembler.disassemble(pcAddr, null);
-                        currentInstruction = codeManager.getInstructionAt(pcAddr);
-                    }
-                    
-                    if (currentInstruction != null)
-                    {
-                        InstructionPrototype prototype = currentInstruction.getPrototype();
-                        String mnemonic = prototype.getMnemonic(currentInstruction.getInstructionContext());
-                        
-                        if (mnemonic.equals("cmp") && currentInstruction.getOperandType(0) == OperandType.REGISTER && currentInstruction.getOperandType(1) == OperandType.REGISTER)
+                        Address pcAddr = this.sLang.getDefaultSpace().getAddress(off);
+                        CodeManager codeManager = ((ProgramDB)this.program).getCodeManager();
+                        Instruction currentInstruction = codeManager.getInstructionAt(pcAddr);
+
+                        if (currentInstruction == null)
                         {
-                            Register r0 = currentInstruction.getRegister(0);
-                            Register r1 = currentInstruction.getRegister(1);
-                            
-                            // Cheat time!
-                            if (r0.getName().equals("x8") && r1.getName().equals("x9"))
+                            disassembler.disassemble(pcAddr, null);
+                            currentInstruction = codeManager.getInstructionAt(pcAddr);
+                        }
+
+                        if (currentInstruction != null)
+                        {
+                            InstructionPrototype prototype = currentInstruction.getPrototype();
+                            String mnemonic = prototype.getMnemonic(currentInstruction.getInstructionContext());
+
+                            if (mnemonic.equals("cmp") &&
+                                currentInstruction.getOperandType(0) == OperandType.REGISTER &&
+                                currentInstruction.getOperandType(1) == OperandType.REGISTER)
                             {
-                                long x9 = this.state.getValue("x9");
-                                this.state.setValue("x8", x9);
-                                this.state.setValue("NZCV", 0b0100);
+                                Register r0 = currentInstruction.getRegister(0);
+                                Register r1 = currentInstruction.getRegister(1);
+
+                                if (r0.getName().equals("x8") && r1.getName().equals("x9"))
+                                {
+                                    long x9 = this.state.getValue("x9");
+                                    this.state.setValue("x8", x9);
+                                    this.state.setValue("NZCV", 0b0100);
+                                }
                             }
                         }
-                    }
-                });
+                    });
+                }
+
+                this.returnFromFunc(0);
+                return true;
             }
+
+            Msg.warn(this, String.format(
+                "PrepareForProcess: no valid layout found for cmd %d. metaInfo[0..0x30]: %s",
+                this.currentTrace.cmdId, bytesToHex(metaInfo, 0x30)));
+            return false;
         }
         catch (Exception e)
         {
+            Msg.error(this, "PrepareForProcess exception", e);
             return false;
         }
-        
-        this.returnFromFunc(0);
-        return true;
+    }
+
+    private static long readU16LE(byte[] buf, int off)
+    {
+        return ((buf[off] & 0xFFL)) | ((buf[off + 1] & 0xFFL) << 8);
+    }
+
+    private static long readU32LE(byte[] buf, int off)
+    {
+        return ((buf[off]     & 0xFFL))
+            | ((buf[off + 1] & 0xFFL) << 8)
+            | ((buf[off + 2] & 0xFFL) << 16)
+            | ((buf[off + 3] & 0xFFL) << 24);
+    }
+
+    private static String bytesToHex(byte[] bytes, int len)
+    {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(len, bytes.length); i++)
+            sb.append(String.format("%02X ", bytes[i]));
+        return sb.toString().trim();
     }
     
     private boolean OverwriteClientProcessId()
@@ -568,10 +639,16 @@ public class IPCEmulator
     {
         long out = this.state.getValue("x1");
         
-        if (this.currentTrace.inInterfaces != 1)
-            throw new RuntimeException("Invalid number of in interfaces!");
-            
-        this.setLong(out, this.inObjectPtr);
+        // Set up input object pointers for all in interfaces
+        // If there are 0 interfaces, we don't set anything
+        // If there are 1+ interfaces, fill them with the mock object
+        if (this.currentTrace.inInterfaces > 0)
+        {
+            for (long i = 0; i < this.currentTrace.inInterfaces; i++)
+            {
+                this.setLong(out + i * 0x8, this.inObjectPtr);
+            }
+        }
         
         this.returnFromFunc(0);
         return true;
@@ -594,8 +671,8 @@ public class IPCEmulator
     
     private boolean SetOutObjects()
     {
-        // Stubbed
-        return false;
+        this.returnFromFunc(0);
+        return true;
     }
     
     private boolean SetOutNativeHandles()
@@ -606,14 +683,16 @@ public class IPCEmulator
     
     private boolean BeginPreparingForErrorReply()
     {
-        // Stubbed
-        return false;
+        long off = this.state.getValue("x1");
+        this.setLong(off, this.outputMemory);
+        this.setLong(off + 0x8, 0x1000);
+        this.returnFromFunc(0);
+        return true;
     }
     
     private boolean EndPreparingForReply()
     {
-        // Stubbed
         this.returnFromFunc(0);
-        return false;
+        return true;
     }
 }
