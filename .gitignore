@@ -1,4 +1,7 @@
 eclipse/
 .gradle/
+.gradle-workspace/
+.vscode/
 dist/
 build/
+lib/
