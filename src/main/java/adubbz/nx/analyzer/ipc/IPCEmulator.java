@@ -35,12 +35,32 @@ import ghidra.util.task.TaskMonitorAdapter;
 import org.apache.commons.compress.utils.Lists;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class IPCEmulator 
 {
+    private static final int MAX_BUFFER_ATTRS = 8;
+    private static final int BUFFER_ATTR_IN = IPCTrace.BUFFER_ATTR_IN;
+    private static final int BUFFER_ATTR_OUT = IPCTrace.BUFFER_ATTR_OUT;
+    private static final int BUFFER_ATTR_HIPC_MAP_ALIAS = 4;
+    private static final int BUFFER_ATTR_HIPC_POINTER = 8;
+    private static final int BUFFER_ATTR_HIPC_AUTO_SELECT = 32;
+    private static final int BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_SECURE = 64;
+    private static final int BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_DEVICE = 128;
+    private static final int BUFFER_ATTR_VALID_MASK =
+        BUFFER_ATTR_IN |
+        BUFFER_ATTR_OUT |
+        BUFFER_ATTR_HIPC_MAP_ALIAS |
+        BUFFER_ATTR_HIPC_POINTER |
+        16 |
+        BUFFER_ATTR_HIPC_AUTO_SELECT |
+        BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_SECURE |
+        BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_DEVICE;
+
     private Program program;
     public boolean hasSetup;
     
@@ -302,8 +322,10 @@ public class IPCEmulator
         disassembler.disassemble(procFuncAddr, null);
 
         final int MAX_INSTRUCTIONS_WITH_META = 100_000;
-        final int MAX_INSTRUCTIONS_NO_META   = 500;
+        final int MAX_INSTRUCTIONS_NO_META   = 5_000;
+        final int MAX_NO_META_PC_HITS        = 256;
         int instructionCount = 0;
+        Map<Long, Integer> noMetaPcHits = new HashMap<>();
 
         while (true)
         {
@@ -317,8 +339,22 @@ public class IPCEmulator
             if (emu.getExecuteAddress().getOffset() == 0)
                 break;
 
+            if (!hasMeta)
+            {
+                int pcHits = noMetaPcHits.getOrDefault(pc, 0) + 1;
+                noMetaPcHits.put(pc, pcHits);
+
+                if (pcHits > MAX_NO_META_PC_HITS)
+                {
+                    this.currentTrace.timedOut = true;
+                    break;
+                }
+            }
+
             if (++instructionCount > limit)
             {
+                this.currentTrace.timedOut = true;
+
                 if (!hasMeta)
                 {
                     // Silent — this is just a command that doesn't exist in this interface
@@ -461,76 +497,22 @@ public class IPCEmulator
         if (metaInfoSize != this.state.getChunk(metaInfo, this.sLang.getDefaultSpace(), metaInfoPtr, metaInfo.length, true))
             throw new RuntimeException("Failed to read meta info");
 
-        // Read a little-endian uint16 from a byte array
-        // Layouts: { baseOffset, useUint16 }
-        // [0] = base offset, [1] = 1 for uint16 fields, 0 for uint32 fields
-        // Added more offsets for compatibility with different SDK versions (especially 9.0.0)
-        int[][] layouts = new int[][] {
-            { 0x00, 1 },   // modern SDK: uint16 fields at 0x0
-            { 0x08, 0 },   // legacy SDK: uint32 fields at 0x8
-            { 0x10, 0 },   // legacy SDK: uint32 fields at 0x10
-            { 0x18, 0 },   // additional legacy SDK variant: uint32 fields at 0x18
-            { 0x20, 0 },   // additional legacy SDK variant: uint32 fields at 0x20
-        };
-
         try
         {
-            for (int[] layout : layouts)
+            Metadata metadata = decodeMetadata(metaInfo);
+
+            if (metadata != null)
             {
-                int base = layout[0];
-                boolean wide = layout[1] == 0;
-
-                long rawBytesIn, rawBytesOut, bufferCount, inInterfaces, outInterfaces, inHandles, outHandles;
-
-                if (!wide)
-                {
-                    // Modern SDK layout:
-                    // [0x00] uint16 rawBytesIn
-                    // [0x02] uint16 rawBytesOut
-                    // [0x04] uint8  bufferCount
-                    // [0x05] uint8  inInterfaces
-                    // [0x06] uint8  outInterfaces
-                    // [0x07] uint8  inHandles
-                    // [0x08] uint8  outHandles
-                    rawBytesIn    = readU16LE(metaInfo, base + 0x00);
-                    rawBytesOut   = readU16LE(metaInfo, base + 0x02);
-                    bufferCount   = metaInfo[base + 0x04] & 0xFFL;
-                    inInterfaces  = metaInfo[base + 0x05] & 0xFFL;
-                    outInterfaces = metaInfo[base + 0x06] & 0xFFL;
-                    inHandles     = metaInfo[base + 0x07] & 0xFFL;
-                    outHandles    = metaInfo[base + 0x08] & 0xFFL;
-                }
-                else
-                {
-                    // uint32 little-endian reads (legacy SDK variants)
-                    rawBytesIn    = readU32LE(metaInfo, base + 0x00);
-                    rawBytesOut   = readU32LE(metaInfo, base + 0x08);
-                    bufferCount   = readU32LE(metaInfo, base + 0x10);
-                    inInterfaces  = readU32LE(metaInfo, base + 0x14);
-                    outInterfaces = readU32LE(metaInfo, base + 0x18);
-                    inHandles     = readU32LE(metaInfo, base + 0x1C);
-                    outHandles    = readU32LE(metaInfo, base + 0x20);
-                }
-
-                long bytesIn  = rawBytesIn  - 0x10;
-                long bytesOut = rawBytesOut - 0x10;
-
-                // Relaxed validation: allow slightly larger buffers for legacy SDKs
-                if (rawBytesIn  < 0x10 || rawBytesIn  > 0x4010L) continue;
-                if (rawBytesOut < 0x10 || rawBytesOut > 0x4010L) continue;
-                if (bufferCount  > 20) continue;
-                if (inInterfaces > 20) continue;
-                if (outInterfaces> 20) continue;
-                if (inHandles    > 20) continue;
-                if (outHandles   > 20) continue;
-
-                this.currentTrace.bytesIn       = bytesIn;
-                this.currentTrace.bytesOut      = bytesOut;
-                this.currentTrace.bufferCount   = bufferCount;
-                this.currentTrace.inInterfaces  = inInterfaces;
-                this.currentTrace.outInterfaces = outInterfaces;
-                this.currentTrace.inHandles     = inHandles;
-                this.currentTrace.outHandles    = outHandles;
+                this.currentTrace.bytesIn       = metadata.bytesIn;
+                this.currentTrace.bytesOut      = metadata.bytesOut;
+                this.currentTrace.bufferCount   = metadata.bufferCount;
+                this.currentTrace.bufferAttrs   = metadata.bufferAttrs;
+                this.currentTrace.bufferAttrsSource = metadata.bufferAttrsSource;
+                this.currentTrace.bufferAttrsProbe = metadata.bufferAttrsProbe;
+                this.currentTrace.inInterfaces  = metadata.inInterfaces;
+                this.currentTrace.outInterfaces = metadata.outInterfaces;
+                this.currentTrace.inHandles     = metadata.inHandles;
+                this.currentTrace.outHandles    = metadata.outHandles;
                 this.currentTrace.lr            = this.state.getValue("x30");
 
                 if (this.currentTrace.inInterfaces > 0)
@@ -586,6 +568,332 @@ public class IPCEmulator
         }
     }
 
+    private static Metadata decodeMetadata(byte[] metaInfo)
+    {
+        Metadata metadata = decodeRuntimeMetadata(metaInfo);
+        if (metadata != null && looksLikeRuntimeMetadata(metaInfo))
+            return metadata;
+
+        metadata = decodeLegacyCompactMetadata(metaInfo, 0x00);
+        if (metadata != null)
+            return metadata;
+
+        int[] wideBases = new int[] { 0x08, 0x10, 0x18, 0x20 };
+        for (int base : wideBases)
+        {
+            metadata = decodeLegacyWideMetadata(metaInfo, base);
+            if (metadata != null)
+                return metadata;
+        }
+
+        return null;
+    }
+
+    private static Metadata decodeLegacyCompactMetadata(byte[] metaInfo, int base)
+    {
+        // Legacy Nintendo SDK-style metadata stores CMIF header-inclusive raw
+        // sizes followed by object/buffer/handle counts.
+        long rawBytesIn    = readU16LE(metaInfo, base + 0x00);
+        long rawBytesOut   = readU16LE(metaInfo, base + 0x02);
+        long inInterfaces  = metaInfo[base + 0x04] & 0xFFL;
+        long bufferCount   = metaInfo[base + 0x05] & 0xFFL;
+        long outInterfaces = metaInfo[base + 0x06] & 0xFFL;
+        long inHandles     = metaInfo[base + 0x07] & 0xFFL;
+        long outHandles    = metaInfo[base + 0x08] & 0xFFL;
+
+        if (!isValidLegacyMetadata(rawBytesIn, rawBytesOut, bufferCount, inInterfaces, outInterfaces, inHandles, outHandles))
+            return null;
+
+        BufferAttrsResult bufferAttrs = decodeCompactBufferAttrs(metaInfo, base, bufferCount);
+        String bufferAttrsProbe = bufferAttrs == null ? describeCompactBufferAttrProbes(metaInfo, base, bufferCount) : null;
+
+        return new Metadata(rawBytesIn - 0x10, rawBytesOut - 0x10, bufferCount, inInterfaces,
+            outInterfaces, inHandles, outHandles, bufferAttrs, bufferAttrsProbe);
+    }
+
+    private static Metadata decodeLegacyWideMetadata(byte[] metaInfo, int base)
+    {
+        long rawBytesIn    = readU32LE(metaInfo, base + 0x00);
+        long rawBytesOut   = readU32LE(metaInfo, base + 0x08);
+        long inInterfaces  = readU32LE(metaInfo, base + 0x10);
+        long bufferCount   = readU32LE(metaInfo, base + 0x14);
+        long outInterfaces = readU32LE(metaInfo, base + 0x18);
+        long inHandles     = readU32LE(metaInfo, base + 0x1C);
+        long outHandles    = readU32LE(metaInfo, base + 0x20);
+
+        if (!isValidLegacyMetadata(rawBytesIn, rawBytesOut, bufferCount, inInterfaces, outInterfaces, inHandles, outHandles))
+            return null;
+
+        BufferAttrsResult bufferAttrs = decodeWideBufferAttrs(metaInfo, base, bufferCount);
+        String bufferAttrsProbe = bufferAttrs == null ? describeWideBufferAttrProbes(metaInfo, base, bufferCount) : null;
+
+        return new Metadata(rawBytesIn - 0x10, rawBytesOut - 0x10, bufferCount, inInterfaces,
+            outInterfaces, inHandles, outHandles, bufferAttrs, bufferAttrsProbe);
+    }
+
+    private static Metadata decodeRuntimeMetadata(byte[] metaInfo)
+    {
+        // Atmosphere's ServerMessageRuntimeMetadata is an eight-byte POD:
+        // in data size, unaligned out data size, in/out header sizes, in/out object counts.
+        long bytesIn       = readU16LE(metaInfo, 0x00);
+        long bytesOut      = readU16LE(metaInfo, 0x02);
+        long inHeadersSize = metaInfo[0x04] & 0xFFL;
+        long outHeadersSize= metaInfo[0x05] & 0xFFL;
+        long inInterfaces  = metaInfo[0x06] & 0xFFL;
+        long outInterfaces = metaInfo[0x07] & 0xFFL;
+
+        if (bytesIn > 0x4000L || bytesOut > 0x4000L)
+            return null;
+        if (!isValidHeaderSize(inHeadersSize) || !isValidHeaderSize(outHeadersSize))
+            return null;
+        if (inInterfaces > 20 || outInterfaces > 20)
+            return null;
+
+        return new Metadata(bytesIn, bytesOut, 0, inInterfaces, outInterfaces, 0, 0, null, null);
+    }
+
+    private static BufferAttrsResult decodeCompactBufferAttrs(byte[] metaInfo, int base, long bufferCount)
+    {
+        int[] offsets = new int[] { base + 0x0A, base + 0x09, alignUp(base + 0x09, 4), base + 0x10 };
+
+        for (int offset : offsets)
+        {
+            int[] attrs = readByteBufferAttrs(metaInfo, offset, bufferCount);
+            if (attrs != null)
+                return new BufferAttrsResult(attrs, String.format("legacy-compact/u8+0x%X", offset - base));
+        }
+
+        return null;
+    }
+
+    private static String describeCompactBufferAttrProbes(byte[] metaInfo, int base, long bufferCount)
+    {
+        int[] offsets = new int[] { base + 0x0A, base + 0x09, alignUp(base + 0x09, 4), base + 0x10 };
+        StringBuilder out = new StringBuilder();
+
+        for (int offset : offsets)
+            appendProbe(out, String.format("u8+0x%X", offset - base), readRawByteAttrs(metaInfo, offset, bufferCount));
+
+        return out.toString();
+    }
+
+    private static BufferAttrsResult decodeWideBufferAttrs(byte[] metaInfo, int base, long bufferCount)
+    {
+        int[] offsets = new int[] { base + 0x24, alignUp(base + 0x24, 8), base + 0x30 };
+
+        for (int offset : offsets)
+        {
+            int[] attrs = readU32BufferAttrs(metaInfo, offset, bufferCount);
+            if (attrs != null)
+                return new BufferAttrsResult(attrs, String.format("legacy-wide/u32+0x%X", offset - base));
+        }
+
+        for (int offset : offsets)
+        {
+            int[] attrs = readByteBufferAttrs(metaInfo, offset, bufferCount);
+            if (attrs != null)
+                return new BufferAttrsResult(attrs, String.format("legacy-wide/u8+0x%X", offset - base));
+        }
+
+        return null;
+    }
+
+    private static String describeWideBufferAttrProbes(byte[] metaInfo, int base, long bufferCount)
+    {
+        int[] offsets = new int[] { base + 0x24, alignUp(base + 0x24, 8), base + 0x30 };
+        StringBuilder out = new StringBuilder();
+
+        for (int offset : offsets)
+            appendProbe(out, String.format("u32+0x%X", offset - base), readRawU32Attrs(metaInfo, offset, bufferCount));
+
+        for (int offset : offsets)
+            appendProbe(out, String.format("u8+0x%X", offset - base), readRawByteAttrs(metaInfo, offset, bufferCount));
+
+        return out.toString();
+    }
+
+    private static void appendProbe(StringBuilder out, String name, String value)
+    {
+        if (out.length() > 0)
+            out.append("; ");
+
+        out.append(name).append("=").append(value);
+    }
+
+    private static int[] readByteBufferAttrs(byte[] metaInfo, int offset, long bufferCount)
+    {
+        if (!isValidBufferAttrCount(bufferCount) || offset < 0 || offset + bufferCount > metaInfo.length)
+            return null;
+
+        int[] attrs = new int[(int)bufferCount];
+
+        for (int i = 0; i < attrs.length; i++)
+        {
+            attrs[i] = metaInfo[offset + i] & 0xFF;
+
+            if (!isValidBufferAttr(attrs[i]))
+                return null;
+        }
+
+        return attrs;
+    }
+
+    private static String readRawByteAttrs(byte[] metaInfo, int offset, long bufferCount)
+    {
+        if (!isValidBufferAttrCount(bufferCount) || offset < 0 || offset + bufferCount > metaInfo.length)
+            return "<range>";
+
+        StringBuilder out = new StringBuilder("[");
+
+        for (int i = 0; i < bufferCount; i++)
+        {
+            if (i > 0)
+                out.append(",");
+
+            out.append(metaInfo[offset + i] & 0xFF);
+        }
+
+        return out.append("]").toString();
+    }
+
+    private static int[] readU32BufferAttrs(byte[] metaInfo, int offset, long bufferCount)
+    {
+        if (!isValidBufferAttrCount(bufferCount) || offset < 0 || offset + bufferCount * 4 > metaInfo.length)
+            return null;
+
+        int[] attrs = new int[(int)bufferCount];
+
+        for (int i = 0; i < attrs.length; i++)
+        {
+            long attr = readU32LE(metaInfo, offset + i * 4);
+
+            if (!isValidBufferAttr(attr))
+                return null;
+
+            attrs[i] = (int)attr;
+        }
+
+        return attrs;
+    }
+
+    private static String readRawU32Attrs(byte[] metaInfo, int offset, long bufferCount)
+    {
+        if (!isValidBufferAttrCount(bufferCount) || offset < 0 || offset + bufferCount * 4 > metaInfo.length)
+            return "<range>";
+
+        StringBuilder out = new StringBuilder("[");
+
+        for (int i = 0; i < bufferCount; i++)
+        {
+            if (i > 0)
+                out.append(",");
+
+            out.append(readU32LE(metaInfo, offset + i * 4));
+        }
+
+        return out.append("]").toString();
+    }
+
+    private static boolean isValidBufferAttrCount(long bufferCount)
+    {
+        return bufferCount > 0 && bufferCount <= MAX_BUFFER_ATTRS;
+    }
+
+    private static boolean isValidBufferAttr(long attr)
+    {
+        if (attr <= 0 || (attr & ~BUFFER_ATTR_VALID_MASK) != 0)
+            return false;
+
+        if ((attr & (BUFFER_ATTR_IN | BUFFER_ATTR_OUT)) == 0)
+            return false;
+
+        int transferModes = 0;
+
+        if ((attr & BUFFER_ATTR_HIPC_MAP_ALIAS) != 0) transferModes++;
+        if ((attr & BUFFER_ATTR_HIPC_POINTER) != 0) transferModes++;
+        if ((attr & BUFFER_ATTR_HIPC_AUTO_SELECT) != 0) transferModes++;
+
+        if (transferModes != 1)
+            return false;
+
+        return (attr & (BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_SECURE |
+            BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_DEVICE)) !=
+            (BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_SECURE |
+                BUFFER_ATTR_HIPC_MAP_TRANSFER_ALLOWS_NON_DEVICE);
+    }
+
+    private static int alignUp(int value, int align)
+    {
+        return (value + align - 1) & -align;
+    }
+
+    private static class BufferAttrsResult
+    {
+        private final int[] attrs;
+        private final String source;
+
+        private BufferAttrsResult(int[] attrs, String source)
+        {
+            this.attrs = attrs;
+            this.source = source;
+        }
+    }
+
+    private static boolean isValidLegacyMetadata(long rawBytesIn, long rawBytesOut, long bufferCount,
+                                                 long inInterfaces, long outInterfaces,
+                                                 long inHandles, long outHandles)
+    {
+        if (rawBytesIn  < 0x10 || rawBytesIn  > 0x4010L) return false;
+        if (rawBytesOut < 0x10 || rawBytesOut > 0x4010L) return false;
+        if (bufferCount  > 20) return false;
+        if (inInterfaces > 20) return false;
+        if (outInterfaces> 20) return false;
+        if (inHandles    > 20) return false;
+        return outHandles <= 20;
+    }
+
+    private static boolean isValidHeaderSize(long size)
+    {
+        return size == 0 || size == 0x10 || size == 0x20 || size == 0x30;
+    }
+
+    private static boolean looksLikeRuntimeMetadata(byte[] metaInfo)
+    {
+        return isValidHeaderSize(metaInfo[0x04] & 0xFFL) &&
+            isValidHeaderSize(metaInfo[0x05] & 0xFFL) &&
+            ((metaInfo[0x04] & 0xFFL) >= 0x10 || (metaInfo[0x05] & 0xFFL) >= 0x10);
+    }
+
+    private static class Metadata
+    {
+        private final long bytesIn;
+        private final long bytesOut;
+        private final long bufferCount;
+        private final int[] bufferAttrs;
+        private final String bufferAttrsSource;
+        private final String bufferAttrsProbe;
+        private final long inInterfaces;
+        private final long outInterfaces;
+        private final long inHandles;
+        private final long outHandles;
+
+        private Metadata(long bytesIn, long bytesOut, long bufferCount, long inInterfaces,
+                         long outInterfaces, long inHandles, long outHandles,
+                         BufferAttrsResult bufferAttrs, String bufferAttrsProbe)
+        {
+            this.bytesIn = bytesIn;
+            this.bytesOut = bytesOut;
+            this.bufferCount = bufferCount;
+            this.bufferAttrs = bufferAttrs != null ? bufferAttrs.attrs : null;
+            this.bufferAttrsSource = bufferAttrs != null ? bufferAttrs.source : null;
+            this.bufferAttrsProbe = bufferAttrsProbe;
+            this.inInterfaces = inInterfaces;
+            this.outInterfaces = outInterfaces;
+            this.inHandles = inHandles;
+            this.outHandles = outHandles;
+        }
+    }
+
     private static long readU16LE(byte[] buf, int off)
     {
         return ((buf[off] & 0xFFL)) | ((buf[off + 1] & 0xFFL) << 8);
@@ -618,8 +926,9 @@ public class IPCEmulator
     private boolean GetBuffers()
     {
         long out = this.state.getValue("x1");
+        long bufferCount = Math.max(this.currentTrace.bufferCount, 0);
         
-        for (long i = out; i < out + this.currentTrace.bufferCount * 0x10; i += 0x10)
+        for (long i = out; i < out + bufferCount * 0x10; i += 0x10)
         {
             this.setLong(i, this.bufferMemory);
             this.setLong(i + 0x8, this.bufferSize);
@@ -631,6 +940,12 @@ public class IPCEmulator
     
     private boolean GetInNativeHandles()
     {
+        long out = this.state.getValue("x1");
+        long handleCount = Math.max(this.currentTrace.inHandles, 0);
+
+        for (long i = 0; i < handleCount; i++)
+            this.setInt(out + i * 0x4, 0xCAFE0000L + i);
+
         this.returnFromFunc(0);
         return true;
     }
