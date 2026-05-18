@@ -28,10 +28,16 @@ import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.Undefined8DataType;
 import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Data;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.listing.Parameter;
+import ghidra.program.model.listing.ParameterImpl;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.Variable;
+import ghidra.program.model.lang.Register;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
@@ -41,6 +47,7 @@ import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.Msg;
+import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 import org.apache.commons.compress.utils.Lists;
@@ -48,13 +55,24 @@ import org.python.google.common.collect.HashBiMap;
 import org.python.google.common.collect.Sets;
 
 import java.io.IOException;
+import java.io.File;
+import java.io.FileWriter;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static adubbz.nx.common.ElfCompatibilityProvider.R_FAKE_RELR;
 
 public class IPCAnalyzer extends AbstractAnalyzer 
 {
+    private static final Pattern AARCH64_MEMORY_BASE_PATTERN = Pattern.compile("\\[\\s*([xw]\\d+|sp)\\b", Pattern.CASE_INSENSITIVE);
+    private static final String OPTION_EXPORT_IPC_JSON = "Export IPC metadata JSON";
+    private static final String OPTION_EXPORT_IPC_JSON_PATH = "IPC metadata JSON export path";
+
+    private boolean exportIpcJson = false;
+    private String exportIpcJsonPath = "";
+
     public IPCAnalyzer() 
     {
         super("(Switch) IPC Analyzer", "Locates and labels IPC vtables, s_Tables and implementation functions.", AnalyzerType.INSTRUCTION_ANALYZER);
@@ -77,7 +95,17 @@ public class IPCAnalyzer extends AbstractAnalyzer
     @Override
     public void registerOptions(Options options, Program program) 
     {
-        // TODO: Symbol options
+        options.registerOption(OPTION_EXPORT_IPC_JSON, false, null,
+            "Export recovered IPC metadata to a JSON file after analysis.");
+        options.registerOption(OPTION_EXPORT_IPC_JSON_PATH, "", null,
+            "Path for exported IPC metadata JSON. If empty, exports beside the program executable.");
+    }
+
+    @Override
+    public void optionsChanged(Options options, Program program)
+    {
+        this.exportIpcJson = options.getBoolean(OPTION_EXPORT_IPC_JSON, false);
+        this.exportIpcJsonPath = options.getString(OPTION_EXPORT_IPC_JSON_PATH, "");
     }
 
     @Override
@@ -195,6 +223,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             }
 
             this.markupIpc(program, monitor, vtEntries, sTableProcessFuncMap, processFuncTraces, procFuncVtMap);
+            this.exportIpcJson(program, vtEntries, processFuncTraces, procFuncVtMap);
         }
         catch (Exception e)
         {
@@ -1029,19 +1058,15 @@ public class IPCAnalyzer extends AbstractAnalyzer
                         }
                     }
                     
-                    String implComment = """
-                            IPC INFORMATION
-                            Bytes In:       0x%X
-                            Bytes Out:      0x%X
-                            Buffer Count:   0x%X
-                            In Interfaces:  0x%X
-                            Out Interfaces: 0x%X
-                            In Handles:     0x%X
-                            Out Handles:    0x%X
-                            """;
-                    
-                    implComment = String.format(implComment, trace.bytesIn, trace.bytesOut, trace.bufferCount, trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles);
-                    program.getListing().setComment(ipcCmdImplAddr, CommentType.PLATE, implComment);
+                    program.getListing().setComment(ipcCmdImplAddr, CommentType.PLATE,
+                        this.formatIpcComment(trace, cmdName, ipcCmdImplAddr));
+
+                    if (ipcCmdTargetAddr != null)
+                    {
+                        program.getListing().setComment(ipcCmdTargetAddr, CommentType.PLATE,
+                            this.formatIpcComment(trace, cmdName, ipcCmdImplAddr));
+                        this.renameBranchTargetBufferParams(program, trace, ipcCmdTargetAddr);
+                    }
                 }
             }
             
@@ -1076,6 +1101,540 @@ public class IPCAnalyzer extends AbstractAnalyzer
         }
     }
 
+    private String formatIpcComment(IPCTrace trace, String cmdName, Address dispatchFuncAddr)
+    {
+        StringBuilder comment = new StringBuilder();
+
+        comment.append(String.format("""
+            IPC INFORMATION
+            Dispatch Func:     0x%X
+            Command:           0x%X
+            Command Dec:       %d
+            Command Name:      %s
+            LR:                0x%X
+            VT Offset:         0x%X
+            Bytes In:          0x%X
+            Bytes Out:         0x%X
+            Buffer Count:      0x%X
+            """,
+            dispatchFuncAddr.getOffset(), trace.cmdId, trace.cmdId,
+            cmdName != null ? cmdName : "<unknown>",
+            trace.lr, trace.vtOffset,
+            trace.bytesIn, trace.bytesOut, trace.bufferCount));
+
+        if (trace.hasBufferAttrs())
+        {
+            comment.append(String.format("""
+                Buffer Attrs:      %s
+                Buffer Directions: %s
+                Buffer Source:     %s
+                In Buffers:        0x%X
+                Out Buffers:       0x%X
+                """,
+                trace.formatBufferAttrs(), trace.formatBufferDirections(), trace.bufferAttrsSource,
+                trace.getInBufferCount(), trace.getOutBufferCount()));
+        }
+        else if (trace.bufferCount == 0)
+        {
+            comment.append("""
+                Buffer Attrs:      N/A
+                Buffer Directions: N/A
+                Buffer Source:     N/A
+                """);
+        }
+        else
+        {
+            // Probe output is only here to help debug unknown buffer-attribute layouts.
+            comment.append(String.format("""
+                Buffer Attrs:      <unknown>
+                Buffer Directions: <unknown>
+                Buffer Source:     <unknown>
+                Buffer Probe:      %s
+                """,
+                trace.bufferAttrsProbe != null ? trace.bufferAttrsProbe : "<none>"));
+        }
+
+        comment.append(String.format("""
+            In Interfaces:     0x%X
+            Out Interfaces:    0x%X
+            In Handles:        0x%X
+            Out Handles:       0x%X
+            """,
+            trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles));
+
+        return comment.toString();
+    }
+
+    private void exportIpcJson(Program program, List<IPCVTableEntry> vtEntries,
+                               Multimap<Address, IPCTrace> processFuncTraces,
+                               HashBiMap<Address, IPCVTableEntry> procFuncVtMap)
+    {
+        if (!this.exportIpcJson)
+            return;
+
+        File exportFile = this.getIpcJsonExportFile(program);
+
+        if (exportFile == null)
+            return;
+
+        try
+        {
+            File parent = exportFile.getParentFile();
+
+            if (parent != null && !parent.exists() && !parent.mkdirs())
+            {
+                Msg.warn(this, String.format("Failed to create IPC JSON export directory: %s", parent));
+                return;
+            }
+
+            try (FileWriter writer = new FileWriter(exportFile))
+            {
+                writer.write(this.formatIpcJson(program, vtEntries, processFuncTraces, procFuncVtMap));
+            }
+
+            Msg.info(this, String.format("Exported IPC metadata JSON to %s", exportFile.getAbsolutePath()));
+        }
+        catch (IOException | MemoryAccessException e)
+        {
+            Msg.warn(this, String.format("Failed to export IPC metadata JSON to %s: %s",
+                exportFile.getAbsolutePath(), e.getMessage()));
+        }
+    }
+
+    private File getIpcJsonExportFile(Program program)
+    {
+        if (this.exportIpcJsonPath != null && !this.exportIpcJsonPath.isBlank())
+            return new File(this.exportIpcJsonPath);
+
+        String executablePath = program.getExecutablePath();
+
+        if (executablePath == null || executablePath.isBlank())
+        {
+            Msg.warn(this, "IPC metadata JSON export requested, but no export path or executable path is available.");
+            return null;
+        }
+
+        return new File(executablePath + ".ipc.json");
+    }
+
+    private String formatIpcJson(Program program, List<IPCVTableEntry> vtEntries,
+                                 Multimap<Address, IPCTrace> processFuncTraces,
+                                 HashBiMap<Address, IPCVTableEntry> procFuncVtMap) throws MemoryAccessException
+    {
+        StringBuilder out = new StringBuilder();
+        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
+        boolean wroteInterface = false;
+
+        out.append("{\n");
+
+        for (IPCVTableEntry entry : vtEntries)
+        {
+            Address processFuncAddr = procFuncVtMap.inverse().get(entry);
+
+            if (processFuncAddr == null || !processFuncTraces.containsKey(processFuncAddr))
+                continue;
+
+            List<IPCTrace> traces = Lists.newArrayList(processFuncTraces.get(processFuncAddr).iterator());
+            traces = traces.stream()
+                .filter(trace -> trace.vtOffset != -1 && trace.hasDescription())
+                .sorted(Comparator.comparingLong(trace -> trace.cmdId))
+                .collect(Collectors.toList());
+
+            if (traces.isEmpty())
+                continue;
+
+            if (wroteInterface)
+                out.append(",\n");
+
+            String interfaceName = entry.abvName.replace("::vtable", "");
+            out.append("  \"").append(this.escapeJson(interfaceName)).append("\": {\n");
+
+            boolean wroteCommand = false;
+
+            for (IPCTrace trace : traces)
+            {
+                Address vtOffsetAddr = entry.addr.add(0x10 + trace.vtOffset);
+                Address ipcCmdImplAddr = aSpace.getAddress(program.getMemory().getLong(vtOffsetAddr));
+                Address ipcCmdTargetAddr = this.findDirectThunkTarget(program, ipcCmdImplAddr);
+                String commandName = IPCDatabase.getInstance().getCommandName(interfaceName, trace.cmdId);
+
+                if (wroteCommand)
+                    out.append(",\n");
+
+                out.append("    \"").append(trace.cmdId).append("\": {");
+                out.append("\"vt\": \"").append(this.formatHex(trace.vtOffset)).append("\"");
+                out.append(", \"func\": \"").append(this.formatHex(ipcCmdImplAddr.getOffset())).append("\"");
+                out.append(", \"lr\": \"").append(this.formatHex(trace.lr)).append("\"");
+                out.append(", \"inbytes\": ").append(trace.bytesIn);
+                out.append(", \"outbytes\": ").append(trace.bytesOut);
+
+                if (trace.hasBufferAttrs())
+                    out.append(", \"buffers\": ").append(trace.formatBufferAttrs());
+                else if (trace.bufferCount > 0)
+                    out.append(", \"buffer_count\": ").append(trace.bufferCount);
+
+                if (commandName != null)
+                    out.append(", \"name\": \"").append(this.escapeJson(commandName)).append("\"");
+
+                if (ipcCmdTargetAddr != null)
+                {
+                    Function targetFunction = program.getFunctionManager().getFunctionAt(ipcCmdTargetAddr);
+
+                    if (targetFunction != null)
+                    {
+                        out.append(", \"target\": \"").append(this.formatHex(ipcCmdTargetAddr.getOffset())).append("\"");
+                        out.append(", \"prototype\": \"")
+                            .append(this.escapeJson(targetFunction.getPrototypeString(false, false)))
+                            .append("\"");
+                    }
+                }
+
+                out.append("}");
+                wroteCommand = true;
+            }
+
+            out.append("\n  }");
+            wroteInterface = true;
+        }
+
+        out.append("\n}\n");
+        return out.toString();
+    }
+
+    private String formatHex(long value)
+    {
+        return String.format("0x%X", value);
+    }
+
+    private String escapeJson(String value)
+    {
+        if (value == null)
+            return "";
+
+        StringBuilder out = new StringBuilder();
+
+        for (int i = 0; i < value.length(); i++)
+        {
+            char c = value.charAt(i);
+
+            switch (c)
+            {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default ->
+                {
+                    if (c < 0x20)
+                        out.append(String.format("\\u%04X", (int)c));
+                    else
+                        out.append(c);
+                }
+            }
+        }
+
+        return out.toString();
+    }
+
+    private void renameBranchTargetBufferParams(Program program, IPCTrace trace, Address ipcCmdTargetAddr)
+    {
+        if (!trace.hasBufferAttrs())
+            return;
+
+        Function function = program.getFunctionManager().getFunctionAt(ipcCmdTargetAddr);
+
+        if (function == null)
+            return;
+
+        List<Integer> bufferParamOrdinals = this.findBranchTargetBufferParamOrdinals(program, ipcCmdTargetAddr,
+            trace.bufferAttrs.length);
+
+        if (bufferParamOrdinals.size() != trace.bufferAttrs.length)
+        {
+            Msg.debug(this, String.format(
+                "Skipping IPC buffer parameter rename at 0x%X: expected %d buffer params, found %d",
+                ipcCmdTargetAddr.getOffset(), trace.bufferAttrs.length, bufferParamOrdinals.size()));
+            return;
+        }
+
+        int maxOrdinal = bufferParamOrdinals.stream().mapToInt(Integer::intValue).max().orElse(-1);
+
+        if (function.getParameterCount() <= maxOrdinal)
+        {
+            if (!this.commitBranchTargetRegisterParams(program, function, bufferParamOrdinals, trace.bufferAttrs))
+            {
+                Msg.debug(this, String.format(
+                    "Skipping IPC buffer parameter rename at 0x%X: function has %d params, needs ordinal %d",
+                    ipcCmdTargetAddr.getOffset(), function.getParameterCount(), maxOrdinal));
+                return;
+            }
+        }
+
+        int inIndex = 0;
+        int outIndex = 0;
+        int inOutIndex = 0;
+
+        for (int i = 0; i < trace.bufferAttrs.length; i++)
+        {
+            int attr = trace.bufferAttrs[i];
+            String name;
+
+            boolean isIn = (attr & IPCTrace.BUFFER_ATTR_IN) != 0;
+            boolean isOut = (attr & IPCTrace.BUFFER_ATTR_OUT) != 0;
+
+            if (isIn && isOut)
+                name = "inout_buf" + inOutIndex++;
+            else if (isOut)
+                name = "out_buf" + outIndex++;
+            else if (isIn)
+                name = "in_buf" + inIndex++;
+            else
+                continue;
+
+            Parameter parameter = function.getParameter(bufferParamOrdinals.get(i));
+
+            if (parameter == null || parameter.getName().equals(name))
+                continue;
+
+            try
+            {
+                parameter.setName(name, SourceType.ANALYSIS);
+            }
+            catch (DuplicateNameException | InvalidInputException e)
+            {
+                Msg.warn(this, String.format("Failed to rename IPC buffer parameter '%s' at 0x%X: %s",
+                    name, ipcCmdTargetAddr.getOffset(), e.getMessage()));
+            }
+        }
+    }
+
+    private boolean commitBranchTargetRegisterParams(Program program, Function function,
+                                                     List<Integer> bufferParamOrdinals, int[] bufferAttrs)
+    {
+        int maxOrdinal = Math.max(
+            bufferParamOrdinals.stream().mapToInt(Integer::intValue).max().orElse(-1),
+            this.findMaxReferencedParamOrdinal(program, function.getEntryPoint()));
+
+        if (maxOrdinal < 0)
+            return false;
+
+        Map<Integer, String> bufferParamNames = new HashMap<>();
+        int inIndex = 0;
+        int outIndex = 0;
+        int inOutIndex = 0;
+
+        for (int i = 0; i < bufferAttrs.length; i++)
+        {
+            int attr = bufferAttrs[i];
+            boolean isIn = (attr & IPCTrace.BUFFER_ATTR_IN) != 0;
+            boolean isOut = (attr & IPCTrace.BUFFER_ATTR_OUT) != 0;
+            String name;
+
+            if (isIn && isOut)
+                name = "inout_buf" + inOutIndex++;
+            else if (isOut)
+                name = "out_buf" + outIndex++;
+            else if (isIn)
+                name = "in_buf" + inIndex++;
+            else
+                continue;
+
+            bufferParamNames.put(bufferParamOrdinals.get(i), name);
+        }
+
+        List<Variable> parameters = new ArrayList<>();
+
+        try
+        {
+            for (int ordinal = 0; ordinal <= maxOrdinal; ordinal++)
+            {
+                Parameter existing = ordinal < function.getParameterCount() ? function.getParameter(ordinal) : null;
+                String name = bufferParamNames.get(ordinal);
+
+                if (name == null)
+                    name = existing != null && !existing.getName().isBlank() ? existing.getName() : "param_" + (ordinal + 1);
+
+                Register register = program.getRegister("x" + ordinal);
+
+                if (register == null)
+                    return false;
+
+                parameters.add(new ParameterImpl(name, Undefined8DataType.dataType, register, program,
+                    SourceType.ANALYSIS));
+            }
+
+            function.replaceParameters(parameters, Function.FunctionUpdateType.CUSTOM_STORAGE, true,
+                SourceType.ANALYSIS);
+            return true;
+        }
+        catch (DuplicateNameException | InvalidInputException e)
+        {
+            Msg.warn(this, String.format("Failed to commit IPC branch target parameters at 0x%X: %s",
+                function.getEntryPoint().getOffset(), e.getMessage()));
+            return false;
+        }
+    }
+
+    private List<Integer> findBranchTargetBufferParamOrdinals(Program program, Address ipcCmdTargetAddr,
+                                                               int expectedBufferCount)
+    {
+        LinkedHashSet<Integer> bufferParamOrdinals = new LinkedHashSet<>();
+        Map<String, Integer> registerParamOrdinals = new HashMap<>();
+
+        for (int i = 0; i < 8; i++)
+            registerParamOrdinals.put("x" + i, i);
+
+        Instruction instruction = program.getListing().getInstructionAt(ipcCmdTargetAddr);
+
+        for (int i = 0; instruction != null && i < 120 && bufferParamOrdinals.size() < expectedBufferCount; i++)
+        {
+            this.trackRegisterAlias(instruction, registerParamOrdinals);
+
+            String baseRegister = this.getMemoryBaseRegister(instruction);
+
+            if (baseRegister != null)
+            {
+                Integer ordinal = registerParamOrdinals.get(baseRegister);
+
+                if (ordinal != null && ordinal > 0)
+                    bufferParamOrdinals.add(ordinal);
+            }
+
+            instruction = instruction.getNext();
+        }
+
+        return Lists.newArrayList(bufferParamOrdinals.iterator());
+    }
+
+    private int findMaxReferencedParamOrdinal(Program program, Address functionAddr)
+    {
+        int maxOrdinal = -1;
+        Instruction instruction = program.getListing().getInstructionAt(functionAddr);
+
+        for (int i = 0; instruction != null && i < 120; i++)
+        {
+            for (int operandIndex = 0; operandIndex < instruction.getNumOperands(); operandIndex++)
+            {
+                for (Object object : instruction.getOpObjects(operandIndex))
+                {
+                    if (object instanceof Register register)
+                    {
+                        String normalizedName = this.normalizeRegisterName(register.getName());
+                        int ordinal = this.getParamRegisterOrdinal(normalizedName);
+
+                        if (ordinal >= 0)
+                            maxOrdinal = Math.max(maxOrdinal, ordinal);
+                    }
+                }
+            }
+
+            instruction = instruction.getNext();
+        }
+
+        return maxOrdinal;
+    }
+
+    private int getParamRegisterOrdinal(String normalizedName)
+    {
+        if (normalizedName == null || !normalizedName.startsWith("x"))
+            return -1;
+
+        try
+        {
+            int ordinal = Integer.parseInt(normalizedName.substring(1));
+            return ordinal >= 0 && ordinal <= 7 ? ordinal : -1;
+        }
+        catch (NumberFormatException e)
+        {
+            return -1;
+        }
+    }
+
+    private void trackRegisterAlias(Instruction instruction, Map<String, Integer> registerParamOrdinals)
+    {
+        String mnemonic = instruction.getMnemonicString();
+
+        if (!"mov".equals(mnemonic))
+            return;
+
+        Register destRegister = this.getOperandRegister(instruction, 0);
+
+        if (destRegister == null)
+            return;
+
+        String destName = this.normalizeRegisterName(destRegister.getName());
+
+        if (destName == null)
+            return;
+
+        Register sourceRegister = this.getOperandRegister(instruction, 1);
+
+        if (sourceRegister == null)
+        {
+            registerParamOrdinals.remove(destName);
+            return;
+        }
+
+        String sourceName = this.normalizeRegisterName(sourceRegister.getName());
+        Integer sourceOrdinal = sourceName != null ? registerParamOrdinals.get(sourceName) : null;
+
+        if (sourceOrdinal != null)
+            registerParamOrdinals.put(destName, sourceOrdinal);
+        else
+            registerParamOrdinals.remove(destName);
+    }
+
+    private Register getOperandRegister(Instruction instruction, int operandIndex)
+    {
+        if (operandIndex >= instruction.getNumOperands())
+            return null;
+
+        for (Object object : instruction.getOpObjects(operandIndex))
+        {
+            if (object instanceof Register register)
+                return register;
+        }
+
+        return null;
+    }
+
+    private String getMemoryBaseRegister(Instruction instruction)
+    {
+        for (int i = 0; i < instruction.getNumOperands(); i++)
+        {
+            String operand = instruction.getDefaultOperandRepresentation(i);
+
+            if (operand == null || operand.indexOf('[') == -1)
+                continue;
+
+            Matcher matcher = AARCH64_MEMORY_BASE_PATTERN.matcher(operand);
+
+            if (matcher.find())
+                return this.normalizeRegisterName(matcher.group(1));
+        }
+
+        return null;
+    }
+
+    private String normalizeRegisterName(String registerName)
+    {
+        if (registerName == null)
+            return null;
+
+        registerName = registerName.toLowerCase(Locale.ROOT);
+
+        if (registerName.startsWith("w"))
+            return "x" + registerName.substring(1);
+
+        if (registerName.startsWith("x"))
+            return registerName;
+
+        return null;
+    }
+
     private Address findDirectThunkTarget(Program program, Address thunkAddr)
     {
         Instruction instruction = program.getListing().getInstructionAt(thunkAddr);
@@ -1106,7 +1665,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
 
         return null;
     }
-    
+
     protected int getProcFuncVTableSize(Multimap<Address, IPCTrace> processFuncTraces, Address procFuncAddr)
     {
         if (!processFuncTraces.containsKey(procFuncAddr) || processFuncTraces.get(procFuncAddr).isEmpty())
