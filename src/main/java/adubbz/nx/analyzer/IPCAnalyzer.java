@@ -55,6 +55,8 @@ import org.python.google.common.collect.HashBiMap;
 import org.python.google.common.collect.Sets;
 
 import java.io.IOException;
+import java.io.File;
+import java.io.FileWriter;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -65,6 +67,11 @@ import static adubbz.nx.common.ElfCompatibilityProvider.R_FAKE_RELR;
 public class IPCAnalyzer extends AbstractAnalyzer 
 {
     private static final Pattern AARCH64_MEMORY_BASE_PATTERN = Pattern.compile("\\[\\s*([xw]\\d+|sp)\\b", Pattern.CASE_INSENSITIVE);
+    private static final String OPTION_EXPORT_IPC_JSON = "Export IPC metadata JSON";
+    private static final String OPTION_EXPORT_IPC_JSON_PATH = "IPC metadata JSON export path";
+
+    private boolean exportIpcJson = false;
+    private String exportIpcJsonPath = "";
 
     public IPCAnalyzer() 
     {
@@ -88,7 +95,17 @@ public class IPCAnalyzer extends AbstractAnalyzer
     @Override
     public void registerOptions(Options options, Program program) 
     {
-        // TODO: Symbol options
+        options.registerOption(OPTION_EXPORT_IPC_JSON, false, null,
+            "Export recovered IPC metadata to a JSON file after analysis.");
+        options.registerOption(OPTION_EXPORT_IPC_JSON_PATH, "", null,
+            "Path for exported IPC metadata JSON. If empty, exports beside the program executable.");
+    }
+
+    @Override
+    public void optionsChanged(Options options, Program program)
+    {
+        this.exportIpcJson = options.getBoolean(OPTION_EXPORT_IPC_JSON, false);
+        this.exportIpcJsonPath = options.getString(OPTION_EXPORT_IPC_JSON_PATH, "");
     }
 
     @Override
@@ -206,6 +223,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
             }
 
             this.markupIpc(program, monitor, vtEntries, sTableProcessFuncMap, processFuncTraces, procFuncVtMap);
+            this.exportIpcJson(program, vtEntries, processFuncTraces, procFuncVtMap);
         }
         catch (Exception e)
         {
@@ -1145,6 +1163,180 @@ public class IPCAnalyzer extends AbstractAnalyzer
             trace.inInterfaces, trace.outInterfaces, trace.inHandles, trace.outHandles));
 
         return comment.toString();
+    }
+
+    private void exportIpcJson(Program program, List<IPCVTableEntry> vtEntries,
+                               Multimap<Address, IPCTrace> processFuncTraces,
+                               HashBiMap<Address, IPCVTableEntry> procFuncVtMap)
+    {
+        if (!this.exportIpcJson)
+            return;
+
+        File exportFile = this.getIpcJsonExportFile(program);
+
+        if (exportFile == null)
+            return;
+
+        try
+        {
+            File parent = exportFile.getParentFile();
+
+            if (parent != null && !parent.exists() && !parent.mkdirs())
+            {
+                Msg.warn(this, String.format("Failed to create IPC JSON export directory: %s", parent));
+                return;
+            }
+
+            try (FileWriter writer = new FileWriter(exportFile))
+            {
+                writer.write(this.formatIpcJson(program, vtEntries, processFuncTraces, procFuncVtMap));
+            }
+
+            Msg.info(this, String.format("Exported IPC metadata JSON to %s", exportFile.getAbsolutePath()));
+        }
+        catch (IOException | MemoryAccessException e)
+        {
+            Msg.warn(this, String.format("Failed to export IPC metadata JSON to %s: %s",
+                exportFile.getAbsolutePath(), e.getMessage()));
+        }
+    }
+
+    private File getIpcJsonExportFile(Program program)
+    {
+        if (this.exportIpcJsonPath != null && !this.exportIpcJsonPath.isBlank())
+            return new File(this.exportIpcJsonPath);
+
+        String executablePath = program.getExecutablePath();
+
+        if (executablePath == null || executablePath.isBlank())
+        {
+            Msg.warn(this, "IPC metadata JSON export requested, but no export path or executable path is available.");
+            return null;
+        }
+
+        return new File(executablePath + ".ipc.json");
+    }
+
+    private String formatIpcJson(Program program, List<IPCVTableEntry> vtEntries,
+                                 Multimap<Address, IPCTrace> processFuncTraces,
+                                 HashBiMap<Address, IPCVTableEntry> procFuncVtMap) throws MemoryAccessException
+    {
+        StringBuilder out = new StringBuilder();
+        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
+        boolean wroteInterface = false;
+
+        out.append("{\n");
+
+        for (IPCVTableEntry entry : vtEntries)
+        {
+            Address processFuncAddr = procFuncVtMap.inverse().get(entry);
+
+            if (processFuncAddr == null || !processFuncTraces.containsKey(processFuncAddr))
+                continue;
+
+            List<IPCTrace> traces = Lists.newArrayList(processFuncTraces.get(processFuncAddr).iterator());
+            traces = traces.stream()
+                .filter(trace -> trace.vtOffset != -1 && trace.hasDescription())
+                .sorted(Comparator.comparingLong(trace -> trace.cmdId))
+                .collect(Collectors.toList());
+
+            if (traces.isEmpty())
+                continue;
+
+            if (wroteInterface)
+                out.append(",\n");
+
+            String interfaceName = entry.abvName.replace("::vtable", "");
+            out.append("  \"").append(this.escapeJson(interfaceName)).append("\": {\n");
+
+            boolean wroteCommand = false;
+
+            for (IPCTrace trace : traces)
+            {
+                Address vtOffsetAddr = entry.addr.add(0x10 + trace.vtOffset);
+                Address ipcCmdImplAddr = aSpace.getAddress(program.getMemory().getLong(vtOffsetAddr));
+                Address ipcCmdTargetAddr = this.findDirectThunkTarget(program, ipcCmdImplAddr);
+                String commandName = IPCDatabase.getInstance().getCommandName(interfaceName, trace.cmdId);
+
+                if (wroteCommand)
+                    out.append(",\n");
+
+                out.append("    \"").append(trace.cmdId).append("\": {");
+                out.append("\"vt\": \"").append(this.formatHex(trace.vtOffset)).append("\"");
+                out.append(", \"func\": \"").append(this.formatHex(ipcCmdImplAddr.getOffset())).append("\"");
+                out.append(", \"lr\": \"").append(this.formatHex(trace.lr)).append("\"");
+                out.append(", \"inbytes\": ").append(trace.bytesIn);
+                out.append(", \"outbytes\": ").append(trace.bytesOut);
+
+                if (trace.hasBufferAttrs())
+                    out.append(", \"buffers\": ").append(trace.formatBufferAttrs());
+                else if (trace.bufferCount > 0)
+                    out.append(", \"buffer_count\": ").append(trace.bufferCount);
+
+                if (commandName != null)
+                    out.append(", \"name\": \"").append(this.escapeJson(commandName)).append("\"");
+
+                if (ipcCmdTargetAddr != null)
+                {
+                    Function targetFunction = program.getFunctionManager().getFunctionAt(ipcCmdTargetAddr);
+
+                    if (targetFunction != null)
+                    {
+                        out.append(", \"target\": \"").append(this.formatHex(ipcCmdTargetAddr.getOffset())).append("\"");
+                        out.append(", \"prototype\": \"")
+                            .append(this.escapeJson(targetFunction.getPrototypeString(false, false)))
+                            .append("\"");
+                    }
+                }
+
+                out.append("}");
+                wroteCommand = true;
+            }
+
+            out.append("\n  }");
+            wroteInterface = true;
+        }
+
+        out.append("\n}\n");
+        return out.toString();
+    }
+
+    private String formatHex(long value)
+    {
+        return String.format("0x%X", value);
+    }
+
+    private String escapeJson(String value)
+    {
+        if (value == null)
+            return "";
+
+        StringBuilder out = new StringBuilder();
+
+        for (int i = 0; i < value.length(); i++)
+        {
+            char c = value.charAt(i);
+
+            switch (c)
+            {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '\b' -> out.append("\\b");
+                case '\f' -> out.append("\\f");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default ->
+                {
+                    if (c < 0x20)
+                        out.append(String.format("\\u%04X", (int)c));
+                    else
+                        out.append(c);
+                }
+            }
+        }
+
+        return out.toString();
     }
 
     private void renameBranchTargetBufferParams(Program program, IPCTrace trace, Address ipcCmdTargetAddr)
