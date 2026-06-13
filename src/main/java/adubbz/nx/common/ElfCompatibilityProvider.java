@@ -327,12 +327,13 @@ public class ElfCompatibilityProvider
     {
         long base = this.program.getImageBase().getOffset();
         Set<Long> locations = new HashSet<>();
-        int relocSize = 0x8;
+        int relocSize = this.isAarch32 ? 0x4 : 0x8;
 
         long where = 0;
         for (long entryNumber = 0; entryNumber < relrsz / relocSize; entryNumber++)
         {
-            long entry = this.binaryReader.readLong(base + relr + entryNumber * relocSize);
+            long entryOff = base + relr + entryNumber * relocSize;
+            long entry = this.isAarch32 ? Integer.toUnsignedLong(this.binaryReader.readInt(entryOff)) : this.binaryReader.readLong(entryOff);
 
             if ((entry & 1) != 0) {
                 entry >>= 1;

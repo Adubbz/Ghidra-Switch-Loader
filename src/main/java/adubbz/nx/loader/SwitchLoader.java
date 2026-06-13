@@ -23,6 +23,7 @@ import ghidra.app.util.bin.BinaryReader;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.app.util.bin.ByteProviderWrapper;
 import ghidra.app.util.opinion.*;
+import ghidra.framework.options.Options;
 import ghidra.framework.store.LockException;
 import ghidra.program.model.address.AddressOutOfBoundsException;
 import ghidra.program.model.address.AddressOverflowException;
@@ -101,6 +102,7 @@ public class SwitchLoader extends BinaryLoader
         }
 
         var adapter = this.binaryType.createAdapter(program, provider);
+        this.setDefaultAnalysisOptions(program);
         
         // Set the base address
         try 
@@ -127,6 +129,14 @@ public class SwitchLoader extends BinaryLoader
             // KIP1s always start with a branch instruction at the start of their text
             loader.createEntryFunction("entry", program.getImageBase().getOffset(), settings.monitor());
         }
+    }
+
+    private void setDefaultAnalysisOptions(Program program)
+    {
+        Options analysisOptions = program.getOptions(Program.ANALYSIS_PROPERTIES);
+        analysisOptions.setBoolean("Decompiler Parameter ID", true);
+        analysisOptions.setBoolean("Scalar Operand References", true);
+        analysisOptions.setBoolean("ELF Scalar Operand References", true);
     }
 
     @Override
