@@ -121,9 +121,7 @@ public abstract class NXOAdapter
             return this.elfProvider;
         
         long baseAddress = program.getImageBase().getOffset();
-        long memoryProviderLength = 0x0;
-        
-        memoryProviderLength = this.getMemoryProvider().length();
+        long memoryProviderLength = this.getMemoryProvider().length();
 
         this.elfProvider = new ElfCompatibilityProvider(program, new LegacyByteProviderWrapper(this.getMemoryProvider(), -baseAddress, memoryProviderLength), this.isAarch32());
         
