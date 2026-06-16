@@ -5269,9 +5269,13 @@
                         "name": "CreateAuthorizationRequest",
                         "out": "nn::account::nas::IAuthorizationRequest"
                     },
+                    "151": "Cmd151",
+                    "152": "Cmd152",
+                    "153": "Cmd153",
                     "160": "RequiresUpdateNetworkServiceAccountIdTokenCache",
                     "161": "RequireReauthenticationOfNetworkServiceAccount",
-                    "170": {
+                    "170":  {
+                        "name": "Cmd170",
                         "out": "nn::account::nas::IDeviceHistoryRequest"
                     },
                     "180": "GetRequestForNintendoAccountReauthentication",
@@ -5351,6 +5355,7 @@
                         "out": "nn::account::detail::IAsyncContext"
                     },
                     "410": {
+                        "name": "Cmd410",
                         "out": "nn::account::detail::IAsyncContext"
                     },
                     "900": "GetAuthenticationInfoForWin",
@@ -5414,6 +5419,14 @@
                     "22": "GetState"
                 }
             },
+            "UnknownInterface2250":{
+                "nn::account::nas::UnnamedInterface": {
+                    "10": "Cmd10",
+                    "19": "Cmd19",
+                    "21": "Cmd21",
+                    "23": "Cmd23"
+                }
+            },
             "IDeviceHistoryRequest": {
                 "nn::account::nas::IDeviceHistoryRequest": {
                     "10": {
@@ -5456,7 +5469,8 @@
                     "100": "GetAccountId",
                     "101": "GetLinkedNintendoAccountId",
                     "102": "GetNickname",
-                    "103": "GetProfileImage"
+                    "103": "GetProfileImage",
+                    "1000": "Cmd1000"
                 }
             },
             "IOAuthProcedureForDeviceMigrationOperatingUserAuthentication": {
@@ -5599,9 +5613,13 @@
                         "name": "CreateAuthorizationRequest",
                         "out": "nn::account::nas::IAuthorizationRequest"
                     },
+                    "151": "Cmd151",
+                    "152": "Cmd152",
+                    "153": "Cmd153",
                     "160": "RequiresUpdateNetworkServiceAccountIdTokenCache",
                     "161": "RequireReauthenticationOfNetworkServiceAccount",
                     "170": {
+                        "name": "Cmd170",
                         "out": "nn::account::nas::IDeviceHistoryRequest"
                     },
                     "180": "GetRequestForNintendoAccountReauthentication",
@@ -6033,6 +6051,7 @@
                         "out": "nn::account::detail::IAsyncContext"
                     },
                     "3": "LoadIdTokenCache",
+                    "4": "Cmd4",
                     "130": "GetNintendoAccountUserResourceCacheForApplication",
                     "150": {
                         "name": "CreateAuthorizationRequest",
@@ -6510,9 +6529,11 @@
                 "nn::ns::detail::IApplicationVersionInterface": {
                     "0": "GetLaunchRequiredVersion",
                     "1": "UpgradeLaunchRequiredVersion",
+                    "34": "Cmd34",
                     "35": "UpdateVersionList",
                     "36": "PushLaunchVersion",
                     "37": "ListRequiredVersion",
+                    "38": "Cmd38",
                     "800": "RequestVersionList",
                     "801": "ListVersionList",
                     "802": {
@@ -6923,6 +6944,7 @@
                         "name": "RequestDownloadApplicationPrepurchasedRightsForAccount",
                         "out": "nn::ns::detail::IAsyncResult"
                     },
+                    "1904": "Cmd1904",
                     "2000": "GetSystemDeliveryInfo",
                     "2001": "SelectLatestSystemDeliveryInfo",
                     "2002": "VerifyDeliveryProtocolVersion",
@@ -7782,7 +7804,11 @@
                         "name": "CreateAuthorizationRequest",
                         "out": "nn::account::nas::IAuthorizationRequest"
                     },
+                    "151": "Cmd151",
+                    "152": "Cmd152",
+                    "153": "Cmd153",
                     "160": "RequiresUpdateNetworkServiceAccountIdTokenCache",
+                    "170": "Cmd170",
                     "161": "RequireReauthenticationOfNetworkServiceAccount",
                     "180": "GetRequestForNintendoAccountReauthentication",
                     "181": {
@@ -7859,6 +7885,7 @@
                         "name": "RefreshServiceEntryRequirementCacheForOnlinePlayAsync",
                         "out": "nn::account::detail::IAsyncContext"
                     },
+                    "410": "Cmd410",
                     "900": "GetAuthenticationInfoForWin",
                     "901": {
                         "name": "ImportAsyncForWin",
@@ -7921,6 +7948,14 @@
                     "22": "GetState"
                 }
             },
+            "UnknownInterface2250":{
+                "nn::account::nas::UnnamedInterface": {
+                    "10": "Cmd10",
+                    "19": "Cmd19",
+                    "21": "Cmd21",
+                    "23": "Cmd23"
+                }
+            },
             "IDeviceHistoryRequest": {
                 "nn::account::nas::IDeviceHistoryRequest": {
                     "10": {
@@ -7964,7 +7999,8 @@
                     "101": "GetLinkedNintendoAccountId",
                     "102": "GetNickname",
                     "103": "GetProfileImage",
-                    "104": "GetProfileLargeImage"
+                    "104": "GetProfileLargeImage",
+                    "1000": "Cmd1000"
                 }
             },
             "IOAuthProcedureForDeviceMigrationOperatingUserAuthentication": {
@@ -8106,8 +8142,12 @@
                         "name": "CreateAuthorizationRequest",
                         "out": "nn::account::nas::IAuthorizationRequest"
                     },
+                    "151": "Cmd151",
+                    "152": "Cmd152",
+                    "153": "Cmd153",
                     "160": "RequiresUpdateNetworkServiceAccountIdTokenCache",
                     "161": "RequireReauthenticationOfNetworkServiceAccount",
+                    "170": "Cmd170",
                     "180": "GetRequestForNintendoAccountReauthentication",
                     "181": {
                         "name": "CreateProcedureToReauthenticateNintendoAccount",
@@ -8269,6 +8309,7 @@
                         "out": "nn::account::detail::IAsyncContext"
                     },
                     "3": "LoadIdTokenCache",
+                    "4": "Cmd4",
                     "130": "GetNintendoAccountUserResourceCacheForApplication",
                     "150": {
                         "name": "CreateAuthorizationRequest",
@@ -12247,6 +12288,7 @@
                     "43": "SetNetworkServiceAccountIdTokenFailure",
                     "44": "SetUidList",
                     "45": "PutDigitalTwinKeyValue",
+                    "50": "Cmd50",
                     "51": "DeleteDigitalTwinKeyValue",
                     "52": "Cmd52",
                     "53": {
@@ -12396,6 +12438,7 @@
                     "43": "SetNetworkServiceAccountIdTokenFailure",
                     "44": "SetUidList",
                     "45": "PutDigitalTwinKeyValue",
+                    "50": "Cmd50",
                     "51": "DeleteDigitalTwinKeyValue",
                     "52": "Cmd52",
                     "53": {
