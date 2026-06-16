@@ -5473,6 +5473,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         // Alignment-relevant subsequence in discovery order: anchors (discovered name present in this
         // program's DB list) and unknowns (SRV_). Everything else (framework / cross-program out-
         // interfaces not part of P's sequence) is skipped.
+        IPCHashDatabase hashes = IPCHashDatabase.getInstance();
         List<IpcInferenceNode> seq = new ArrayList<>();
         List<Integer> anchorIdx = new ArrayList<>();         // DB index for anchors, -1 for unknowns
         for (IpcInferenceNode iface : sortedInterfaces)
@@ -5482,30 +5483,35 @@ public class IPCAnalyzer extends AbstractAnalyzer
 
             Integer idx = dbIndex.get(iface.inferName());
             boolean isSrv = iface.inferName().startsWith("SRV_");
+            // A hash-collision name that is NOT in this program's DB list resolved to the wrong
+            // collision member -- a structurally identical interface from another program (e.g. am's
+            // IReceiverService/INotificationSender hash identically to ovln's ISenderService/ISender,
+            // and the big size-1 set collides with nfc IAmManager). Such a name is untrustworthy, so
+            // treat it as a fillable unknown like SRV_ and let positional inference correct it.
+            // (A collision that DID resolve to one of this program's own DB interfaces keeps idx != null
+            // and stays an anchor.)
+            boolean isWrongCollision = idx == null && hashes.isCollisionInterface(iface.inferName());
 
             if (idx != null)
             {
                 seq.add(iface);
                 anchorIdx.add(idx);
             }
-            else if (isSrv)
+            else if (isSrv || isWrongCollision)
             {
                 seq.add(iface);
                 anchorIdx.add(-1);
             }
         }
 
-        // Anchors must strictly increase in DB index along discovery order, else the two orders
-        // disagree and positional inference is unsafe -> emit nothing.
-        int prev = -1;
-        for (int v : anchorIdx)
-        {
-            if (v < 0)
-                continue;
-            if (v <= prev)
-                return;
-            prev = v;
-        }
+        // Anchors should strictly increase in DB index along discovery order. A single mis-named
+        // hash-collision interface can resolve to a DB name from the WRONG position -- e.g. PSC's
+        // nn::psc::sf::IPmService collides to nn::ovln::IReceiverService, which IS in PSC's DB at
+        // index 0, so it lands as a false out-of-order anchor (idx 0 after idx 16). Rather than abort
+        // ALL inference on that, keep the LONGEST strictly-increasing subsequence of anchors and
+        // DEMOTE the out-of-order ones to unknowns, so positional inference fills them (and corrects
+        // the mis-name) instead of losing the whole program's gap-fill.
+        demoteNonMonotonicAnchors(anchorIdx);
 
         int n = dbList.size();
         int i = 0;
@@ -5545,6 +5551,55 @@ public class IPCAnalyzer extends AbstractAnalyzer
 
             i = j;
         }
+    }
+
+    /**
+     * Keep the longest strictly-increasing subsequence of anchors (by DB index, in discovery order)
+     * and DEMOTE every other anchor to an unknown ({@code -1}). The anchors that survive are the
+     * largest set whose discovery order agrees with DB order; out-of-order ones (typically a
+     * hash-collision interface that resolved to the wrong DB member) become fillable so positional
+     * inference can correct them, instead of one bad anchor aborting the whole program's inference.
+     */
+    private void demoteNonMonotonicAnchors(List<Integer> anchorIdx)
+    {
+        List<Integer> pos = new ArrayList<>();           // positions in anchorIdx that ARE anchors
+        for (int i = 0; i < anchorIdx.size(); i++)
+            if (anchorIdx.get(i) >= 0)
+                pos.add(i);
+        int m = pos.size();
+        if (m <= 1)
+            return;
+
+        // Patience LIS over the anchor values, strictly increasing, with predecessor links.
+        int[] tail = new int[m];                         // tail[L] = pos-list index ending an incr-seq of length L+1
+        int[] prev = new int[m];                         // prev[k] = predecessor pos-list index of k
+        Arrays.fill(prev, -1);
+        int len = 0;
+        for (int k = 0; k < m; k++)
+        {
+            int val = anchorIdx.get(pos.get(k));
+            int lo = 0, hi = len;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >>> 1;
+                if (anchorIdx.get(pos.get(tail[mid])) < val)
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            prev[k] = lo > 0 ? tail[lo - 1] : -1;
+            tail[lo] = k;
+            if (lo == len)
+                len++;
+        }
+
+        Set<Integer> keep = new HashSet<>();
+        for (int k = tail[len - 1]; k != -1; k = prev[k])
+            keep.add(pos.get(k));
+
+        for (int i : pos)
+            if (!keep.contains(i))
+                anchorIdx.set(i, -1);
     }
 
     /**
