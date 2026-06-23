@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghidra: [ "12.0.1" ]
+        ghidra: [ "12.1.2" ]
     steps:
       - name: Checkout
         uses: actions/checkout@v6

@@ -30,6 +30,7 @@ import ghidra.program.disassemble.Disassembler;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
+import ghidra.program.model.data.Undefined1DataType;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
@@ -60,6 +61,7 @@ public class NXProgramBuilder
     
     protected AddressSpace aSpace;
     protected MemoryBlockHelper memBlockHelper;
+    private Disassembler mappingSymbolDisassembler;
     
     protected List<PltEntry> pltEntries = new ArrayList<>();
     
@@ -354,12 +356,11 @@ public class NXProgramBuilder
             }
             else if (reloc.r_type == R_FAKE_RELR) {
                 if (this.nxo.getAdapter().isAarch32()) {
-                    // TODO: Add RELRO support for 32-bit
-                    Msg.error(this, "TODO: RELRO support for 32-bit");
-                    continue;
+                    program.getMemory().setInt(target, (int)(this.nxo.getBaseAddress() + originalValue));
                 }
-
-                program.getMemory().setLong(target, this.nxo.getBaseAddress() + originalValue);
+                else {
+                    program.getMemory().setLong(target, this.nxo.getBaseAddress() + originalValue);
+                }
             }
             else 
             {
@@ -515,8 +516,26 @@ public class NXProgramBuilder
     {
         Address entryAddress = this.aSpace.getAddress(entryAddr);
 
-        // TODO: Entry may refer to a pointer - make sure we have execute permission
         MemoryBlock block = this.program.getMemory().getBlock(entryAddress);
+        if (block == null || !block.isExecute())
+        {
+            try
+            {
+                long pointedEntry = this.nxo.getAdapter().isAarch32()
+                    ? Integer.toUnsignedLong(this.program.getMemory().getInt(entryAddress))
+                    : this.program.getMemory().getLong(entryAddress);
+                Address pointedEntryAddress = this.aSpace.getAddress(pointedEntry);
+                MemoryBlock pointedEntryBlock = this.program.getMemory().getBlock(pointedEntryAddress);
+                if (pointedEntryBlock != null && pointedEntryBlock.isExecute())
+                {
+                    entryAddress = pointedEntryAddress;
+                    block = pointedEntryBlock;
+                }
+            }
+            catch (MemoryAccessException | AddressOutOfBoundsException e)
+            {
+            }
+        }
         
         if (block == null || !block.isExecute()) 
         {
@@ -661,7 +680,7 @@ public class NXProgramBuilder
     
     public Symbol createSymbol(Address addr, String name, boolean isPrimary, boolean pinAbsolute, Namespace namespace) throws InvalidInputException 
     {
-        // TODO: At this point, we should be marking as data or code
+        this.markupElfMappingSymbol(addr, name);
         SymbolTable symbolTable = program.getSymbolTable();
         Symbol sym = symbolTable.createLabel(addr, name, namespace, SourceType.IMPORTED);
         if (isPrimary) {
@@ -671,6 +690,44 @@ public class NXProgramBuilder
             sym.setPinned(true);
         }
         return sym;
+    }
+
+    private void markupElfMappingSymbol(Address addr, String name)
+    {
+        if (name == null || name.length() < 2 || name.charAt(0) != '$' || (name.length() > 2 && name.charAt(2) != '.')) {
+            return;
+        }
+
+        char type = name.charAt(1);
+        Listing listing = this.program.getListing();
+
+        try {
+            if (type == 'd') {
+                if (listing.getInstructionContaining(addr) == null) {
+                    Data data = listing.getDataAt(addr);
+                    if (data == null || !data.isDefined()) {
+                        listing.createData(addr, Undefined1DataType.dataType, 1);
+                    }
+                }
+            }
+            else if (type == 'a' || type == 't' || type == 'x') {
+                if (listing.getInstructionAt(addr) == null) {
+                    this.getMappingSymbolDisassembler().disassemble(addr, null);
+                }
+            }
+        }
+        catch (CodeUnitInsertionException e) {
+            Msg.warn(this, String.format("Couldn't mark ELF mapping symbol %s at %s", name, addr), e);
+        }
+    }
+
+    private Disassembler getMappingSymbolDisassembler()
+    {
+        if (this.mappingSymbolDisassembler == null) {
+            this.mappingSymbolDisassembler = Disassembler.getDisassembler(this.program, TaskMonitor.DUMMY, m -> {
+                /* silent */});
+        }
+        return this.mappingSymbolDisassembler;
     }
 
     // Source: https://github.com/NationalSecurityAgency/ghidra/blob/de7c3eaee2a4bc993a402e371b039c2bb2d6c545/Ghidra/Features/Base/src/main/java/ghidra/app/util/bin/format/elf/ElfDefaultGotPltMarkup.java#L545
