@@ -30,7 +30,7 @@ jobs:
           java-version: "21"
 
       - name: Setup Ghidra ${{ matrix.ghidra }}
-        uses: antoniovazquezblanco/setup-ghidra@v2.1.5
+        uses: antoniovazquezblanco/setup-ghidra@v2.1.6
         with:
           version: ${{ matrix.ghidra }}
 
