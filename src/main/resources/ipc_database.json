@@ -195,6 +195,22 @@
                         "name": "OpenDataFileSystemByDataId",
                         "out": "nn::fssrv::sf::IFileSystem"
                     },
+                    "210": {
+                        "name": "OpenDataStorageByCurrentProcessForBatchRead",
+                        "out": "nn::fssrv::sf::IStorageForBatchRead"
+                    },
+                    "211": {
+                        "name": "OpenDataStorageByProgramIdForBatchRead",
+                        "out": "nn::fssrv::sf::IStorageForBatchRead"
+                    },
+                    "212": {
+                        "name": "OpenDataStorageWithProgramIndexForBatchRead",
+                        "out": "nn::fssrv::sf::IStorageForBatchRead"
+                    },
+                    "213": {
+                        "name": "OpenDataStorageByPathForBatchRead",
+                        "out": "nn::fssrv::sf::IStorageForBatchRead"
+                    },
                     "400": {
                         "name": "OpenDeviceOperator",
                         "out": "nn::fssrv::sf::IDeviceOperator"
@@ -267,6 +283,8 @@
                     "800": "GetAndClearErrorInfo",
                     "810": "RegisterProgramIndexMapInfo",
                     "820": "GetContentStorageInfoIndex",
+                    "830": "EncryptStreamPlaySaveData",
+                    "831": "DecryptStreamPlaySaveData",
                     "1000": "SetBisRootForHost",
                     "1001": "SetSaveDataSize",
                     "1002": "SetSaveDataRootPath",
@@ -291,6 +309,7 @@
                         "name": "OpenMemoryStressor",
                         "out": "nn::fssrv::sf::IMemoryStressor"
                     },
+                    "1021": "GetFsVariant",
                     "1100": "OverrideSaveDataTransferTokenSignVerificationKey",
                     "1101": "OverrideSaveDataTransferKeyForTest",
                     "1110": "CorruptSaveDataFileSystemByOffset",
@@ -546,6 +565,17 @@
                         "name": "OpenSaveDataImporter",
                         "out": "nn::fssrv::sf::ISaveDataDivisionImporter"
                     }
+                }
+            },
+            "IStorageForBatchRead": {
+                "nn::fssrv::sf::IStorageForBatchRead": {
+                    "0": "Read",
+                    "1": "Write",
+                    "2": "Flush",
+                    "3": "SetSize",
+                    "4": "GetSize",
+                    "5": "OperateRange",
+                    "10": "BatchRead"
                 }
             },
             "IDeviceOperator": {
@@ -1035,7 +1065,7 @@
                     "29": "ModularExponentiateWithDrmDeviceCertKey",
                     "31": "PrepareEsArchiveKey",
                     "32": "LoadPreparedAesKey",
-                    "33": "CMD33"
+                    "33": "Cmd33"
                 }
             },
             "spl:manu": {
@@ -1381,7 +1411,8 @@
                     "9": "GetKeyCodeMap2",
                     "10": "GetFirmwareVersionForDebug",
                     "11": "GetDeviceNickName",
-                    "12": "GetKeyCodeMapByPort"
+                    "12": "GetKeyCodeMapByPort",
+                    "17": "GetKeyboardLayout"
                 }
             },
             "set:cal": {
@@ -1429,80 +1460,80 @@
                     "41": "GetBatteryVersion",
                     "42": "GetDeviceId",
                     "43": "GetConsoleSixAxisSensorMountType",
-                    "44": "Cmd44",
-                    "45": "Cmd45",
-                    "46": "Cmd46",
-                    "47": "Cmd47",
-                    "48": "Cmd48",
-                    "49": "Cmd49",
-                    "50": "Cmd50",
-                    "51": "Cmd51",
-                    "52": "Cmd52",
-                    "53": "Cmd53",
-                    "54": "Cmd54",
-                    "55": "Cmd55",
-                    "56": "Cmd56",
-                    "57": "Cmd57",
-                    "58": "Cmd58",
-                    "59": "Cmd59",
-                    "60": "Cmd60",
-                    "61": "Cmd61",
-                    "62": "Cmd62",
-                    "63": "Cmd63",
-                    "64": "Cmd64",
-                    "65": "Cmd65",
-                    "66": "Cmd66",
-                    "67": "Cmd67",
-                    "68": "Cmd68",
-                    "69": "Cmd69",
-                    "70": "Cmd70",
-                    "71": "Cmd71",
-                    "72": "Cmd72",
-                    "73": "Cmd73",
-                    "74": "Cmd74",
-                    "75": "Cmd75",
-                    "76": "Cmd76",
-                    "77": "Cmd77",
-                    "78": "Cmd78",
-                    "79": "Cmd79",
-                    "80": "Cmd80",
-                    "81": "Cmd81",
-                    "82": "Cmd82",
-                    "83": "Cmd83",
-                    "84": "Cmd84",
-                    "85": "Cmd85",
-                    "86": "Cmd86",
-                    "87": "Cmd87",
-                    "88": "Cmd88",
-                    "89": "Cmd89",
-                    "90": "Cmd90",
-                    "91": "Cmd91",
-                    "92": "Cmd92",
-                    "93": "Cmd93",
-                    "94": "Cmd94",
-                    "95": "Cmd95",
-                    "96": "Cmd96",
-                    "97": "Cmd97",
-                    "98": "Cmd98",
-                    "99": "Cmd99",
-                    "100": "Cmd100",
-                    "101": "Cmd101",
-                    "102": "Cmd102",
-                    "103": "Cmd103",
-                    "104": "Cmd104",
-                    "105": "Cmd105",
-                    "106": "Cmd106",
-                    "107": "Cmd107",
-                    "108": "Cmd108",
-                    "109": "Cmd109",
-                    "110": "Cmd110",
-                    "111": "Cmd111",
-                    "112": "Cmd112",
-                    "113": "Cmd113",
-                    "114": "Cmd114",
-                    "115": "Cmd115",
-                    "116": "Cmd116",
-                    "117": "Cmd117",
+                    "44": "GetCpDeviceKeyFileSize",
+                    "45": "GetCpDeviceKeyFile",
+                    "46": "GetCpCertificateFileSize",
+                    "47": "GetCpCertificateFile",
+                    "48": "GetRaCertificateFileSize",
+                    "49": "GetRaCertificateFile",
+                    "50": "GetRaOemEkFileSize",
+                    "51": "GetRaOemEkFile",
+                    "52": "GetRaPkaKekFileSize",
+                    "53": "GetRaPkaKekFile",
+                    "54": "GetGcNxPkKekFileSize",
+                    "55": "GetGcNxPkKekFile",
+                    "56": "GetGcUniqueImportKeyFileSize",
+                    "57": "GetGcUniqueImportKeyFile",
+                    "58": "GetGcUniqueEncryptionKeyFileSize",
+                    "59": "GetGcUniqueEncryptionKeyFile",
+                    "60": "GetGcCertificateFileSize",
+                    "61": "GetGcCertificateFile",
+                    "62": "GetGcUniqueKeyAFileSize",
+                    "63": "GetGcUniqueKeyAFile",
+                    "64": "GetGcUniqueKeyBFileSize",
+                    "65": "GetGcUniqueKeyBFile",
+                    "66": "GetGcNxKeyFileSize",
+                    "67": "GetGcNxKeyFile",
+                    "68": "GetGcNxCertificateFileSize",
+                    "69": "GetGcNxCertificateFile",
+                    "70": "GetWirelessLanRegulatoryDomain",
+                    "71": "GetDeviceId",
+                    "72": "GetBluetoothBdAddressSet",
+                    "73": "GetToolModel",
+                    "74": "IsRadioForbidden",
+                    "75": "GetDisplayModuleId",
+                    "76": "GetAnalogStickModuleTypeL",
+                    "77": "GetAnalogStickModelParameterL",
+                    "78": "GetAnalogStickFactoryCalibrationL",
+                    "79": "GetAnalogStickModuleTypeR",
+                    "80": "GetAnalogStickModelParameterR",
+                    "81": "GetAnalogStickFactoryCalibrationR",
+                    "82": "GetConsoleSixAxisSensorModuleType",
+                    "83": "GetConsoleSixAxisSensorMountType",
+                    "84": "GetConsoleSixAxisSensorFactoryCalibration",
+                    "85": "GetOta0DeviceKeyFileSize",
+                    "86": "GetOta0DeviceKeyFile",
+                    "87": "GetOta0CertificateFileSize",
+                    "88": "GetOta0CertificateFile",
+                    "89": "GetOta1DeviceKeyFileSize",
+                    "90": "GetOta1DeviceKeyFile",
+                    "91": "GetOta1CertificateFileSize",
+                    "92": "GetOta1CertificateFile",
+                    "93": "GetOta2DeviceKeyFileSize",
+                    "94": "GetOta2DeviceKeyFile",
+                    "95": "GetOta2CertificateFileSize",
+                    "96": "GetOta2CertificateFile",
+                    "97": "GetJc0CertificateFileSize",
+                    "98": "GetJc0CertificateFile",
+                    "99": "GetJc0PrivateKeyFileSize",
+                    "100": "GetJc0PrivateKeyFile",
+                    "101": "GetJc0PkKekFileSize",
+                    "102": "GetJc0PkKekFile",
+                    "103": "GetJc1CertificateFileSize",
+                    "104": "GetJc1CertificateFile",
+                    "105": "GetJc1PrivateKeyFileSize",
+                    "106": "GetJc1PrivateKeyFile",
+                    "107": "GetJc1PkKekFileSize",
+                    "108": "GetJc1PkKekFile",
+                    "109": "GetWirelessLanPowerTable",
+                    "110": "GetConsoleSixAxisSensorFactoryAccelerationLog",
+                    "111": "GetDrmCertificateFileSize",
+                    "112": "GetDrmCertificateFile",
+                    "113": "GetCalibrationTimeStampUtc",
+                    "114": "GetEncryptedSecretDeviceIdFileSize",
+                    "115": "GetEncryptedSecretDeviceIdFile",
+                    "116": "GetEncryptedSecretDeviceIdEncryptionKeyFileSize",
+                    "117": "GetEncryptedSecretDeviceIdEncryptionKeyFile",
                     "118": "Cmd118",
                     "119": "GetRegionCode"
                 }
@@ -1539,13 +1570,13 @@
                     "2": "GetNetworkSettings",
                     "3": "GetFirmwareVersion",
                     "4": "GetFirmwareVersion2",
-                    "5": "Cmd5",
+                    "5": "GetFirmwareVersionDigest",
                     "7": "GetLockScreenFlag",
                     "8": "SetLockScreenFlag",
                     "9": "GetBacklightSettings",
                     "10": "SetBacklightSettings",
-                    "11": "Cmd11",
-                    "12": "Cmd12",
+                    "11": "SetBluetoothDevicesSettings",
+                    "12": "GetBluetoothDevicesSettings",
                     "13": "GetExternalSteadyClockSourceId",
                     "14": "SetExternalSteadyClockSourceId",
                     "15": "GetUserSystemClockContext",
@@ -1558,10 +1589,10 @@
                     "22": "SetEulaVersions",
                     "23": "GetColorSetId",
                     "24": "SetColorSetId",
-                    "25": "Cmd25",
-                    "26": "Cmd26",
-                    "27": "Cmd27",
-                    "28": "Cmd28",
+                    "25": "GetConsoleInformationUploadFlag",
+                    "26": "SetConsoleInformationUploadFlag",
+                    "27": "GetAutomaticApplicationDownloadFlag",
+                    "28": "SetAutomaticApplicationDownloadFlag",
                     "29": "GetNotificationSettings",
                     "30": "SetNotificationSettings",
                     "31": "GetAccountNotificationSettings",
@@ -1582,8 +1613,8 @@
                     "48": "SetQuestFlag",
                     "49": "GetDataDeletionSettings",
                     "50": "SetDataDeletionSettings",
-                    "51": "Cmd51",
-                    "52": "Cmd52",
+                    "51": "GetInitialSystemAppletProgramId",
+                    "52": "GetOverlayDispProgramId",
                     "53": "GetDeviceTimeZoneLocationName",
                     "54": "SetDeviceTimeZoneLocationName",
                     "55": "GetWirelessCertificationFileSize",
@@ -1596,8 +1627,8 @@
                     "62": "GetDebugModeFlag",
                     "63": "GetPrimaryAlbumStorage",
                     "64": "SetPrimaryAlbumStorage",
-                    "65": "Cmd65",
-                    "66": "Cmd66",
+                    "65": "GetUsb30EnableFlag",
+                    "66": "SetUsb30EnableFlag",
                     "67": "GetBatteryLot",
                     "68": "GetSerialNumber",
                     "69": "GetNfcEnableFlag",
@@ -1611,8 +1642,8 @@
                     "77": "GetDeviceNickName",
                     "78": "SetDeviceNickName",
                     "79": "GetProductModel",
-                    "80": "Cmd80",
-                    "81": "Cmd81",
+                    "80": "GetLdnChannel",
+                    "81": "SetLdnChannel",
                     "82": "AcquireTelemetryDirtyFlagEventHandle",
                     "83": "GetTelemetryDirtyFlags",
                     "84": "GetPtmBatteryLot",
@@ -1628,12 +1659,12 @@
                     "94": "GetFatalDirtyFlags",
                     "95": "GetAutoUpdateEnableFlag",
                     "96": "SetAutoUpdateEnableFlag",
-                    "97": "Cmd97",
-                    "98": "Cmd98",
+                    "97": "GetNxControllerSettings",
+                    "98": "SetNxControllerSettings",
                     "99": "GetBatteryPercentageFlag",
                     "100": "SetBatteryPercentageFlag",
-                    "101": "Cmd101",
-                    "102": "Cmd102",
+                    "101": "GetExternalRtcResetFlag",
+                    "102": "SetExternalRtcResetFlag",
                     "103": "GetUsbFullKeyEnableFlag",
                     "104": "SetUsbFullKeyEnableFlag",
                     "105": "SetExternalSteadyClockInternalOffset",
@@ -1642,14 +1673,14 @@
                     "108": "SetBacklightSettingsEx",
                     "109": "GetHeadphoneVolumeWarningCount",
                     "110": "SetHeadphoneVolumeWarningCount",
-                    "111": "Cmd111",
-                    "112": "Cmd112",
-                    "113": "Cmd113",
-                    "114": "Cmd114",
+                    "111": "GetBluetoothAfhEnableFlag",
+                    "112": "SetBluetoothAfhEnableFlag",
+                    "113": "GetBluetoothBoostEnableFlag",
+                    "114": "SetBluetoothBoostEnableFlag",
                     "115": "GetInRepairProcessEnableFlag",
                     "116": "SetInRepairProcessEnableFlag",
-                    "117": "Cmd117",
-                    "118": "Cmd118",
+                    "117": "GetHeadphoneVolumeUpdateFlag",
+                    "118": "SetHeadphoneVolumeUpdateFlag",
                     "119": "NeedsToUpdateHeadphoneVolume",
                     "120": "GetPushNotificationActivityModeOnSleep",
                     "121": "SetPushNotificationActivityModeOnSleep",
@@ -1659,14 +1690,14 @@
                     "125": "SetErrorReportSharePermission",
                     "126": "GetAppletLaunchFlags",
                     "127": "SetAppletLaunchFlags",
-                    "128": "Cmd128",
-                    "129": "Cmd129",
-                    "130": "Cmd130",
-                    "131": "Cmd131",
-                    "132": "Cmd132",
-                    "133": "Cmd133",
-                    "134": "Cmd134",
-                    "135": "Cmd135",
+                    "128": "GetConsoleSixAxisSensorAccelerationBias",
+                    "129": "SetConsoleSixAxisSensorAccelerationBias",
+                    "130": "GetConsoleSixAxisSensorAngularVelocityBias",
+                    "131": "SetConsoleSixAxisSensorAngularVelocityBias",
+                    "132": "GetConsoleSixAxisSensorAccelerationGain",
+                    "133": "SetConsoleSixAxisSensorAccelerationGain",
+                    "134": "GetConsoleSixAxisSensorAngularVelocityGain",
+                    "135": "SetConsoleSixAxisSensorAngularVelocityGain",
                     "136": "GetKeyboardLayout",
                     "137": "SetKeyboardLayout",
                     "138": "GetWebInspectorFlag",
@@ -1674,42 +1705,42 @@
                     "140": "GetHostFsMountPoint",
                     "141": "GetRequiresRunRepairTimeReviser",
                     "142": "SetRequiresRunRepairTimeReviser",
-                    "143": "Cmd143",
-                    "144": "Cmd144",
-                    "145": "Cmd145",
-                    "146": "Cmd146",
-                    "147": "Cmd147",
-                    "148": "Cmd148",
+                    "143": "SetBlePairingSettings",
+                    "144": "GetBlePairingSettings",
+                    "145": "GetConsoleSixAxisSensorAngularVelocityTimeBias",
+                    "146": "SetConsoleSixAxisSensorAngularVelocityTimeBias",
+                    "147": "GetConsoleSixAxisSensorAngularAcceleration",
+                    "148": "SetConsoleSixAxisSensorAngularAcceleration",
                     "149": "GetRebootlessSystemUpdateVersion",
                     "150": "GetDeviceTimeZoneLocationUpdatedTime",
                     "151": "SetDeviceTimeZoneLocationUpdatedTime",
                     "152": "GetUserSystemClockAutomaticCorrectionUpdatedTime",
                     "153": "SetUserSystemClockAutomaticCorrectionUpdatedTime",
-                    "154": "Cmd154",
-                    "155": "Cmd155",
-                    "156": "Cmd156",
-                    "157": "Cmd157",
-                    "158": "Cmd158",
-                    "159": "Cmd159",
-                    "160": "Cmd160",
-                    "161": "Cmd161",
+                    "154": "GetAccountOnlineStorageSettings",
+                    "155": "SetAccountOnlineStorageSettings",
+                    "156": "GetPctlReadyFlag",
+                    "157": "SetPctlReadyFlag",
+                    "158": "GetAnalogStickUserCalibrationL",
+                    "159": "SetAnalogStickUserCalibrationL",
+                    "160": "GetAnalogStickUserCalibrationR",
+                    "161": "SetAnalogStickUserCalibrationR",
                     "162": "GetPtmBatteryVersion",
                     "163": "SetPtmBatteryVersion",
                     "164": "GetUsb30HostEnableFlag",
                     "165": "SetUsb30HostEnableFlag",
                     "166": "GetUsb30DeviceEnableFlag",
                     "167": "SetUsb30DeviceEnableFlag",
-                    "168": "Cmd168",
-                    "169": "Cmd169",
+                    "168": "GetThemeId",
+                    "169": "SetThemeId",
                     "170": "GetChineseTraditionalInputMethod",
                     "171": "SetChineseTraditionalInputMethod",
                     "172": "GetPtmCycleCountReliability",
                     "173": "SetPtmCycleCountReliability",
                     "174": "GetHomeMenuScheme",
-                    "175": "Cmd175",
-                    "176": "Cmd176",
-                    "177": "Cmd177",
-                    "178": "Cmd178",
+                    "175": "GetThemeSettings",
+                    "176": "SetThemeSettings",
+                    "177": "GetThemeKey",
+                    "178": "SetThemeKey",
                     "179": "GetZoomFlag",
                     "180": "SetZoomFlag",
                     "181": "GetT",
@@ -1736,110 +1767,110 @@
                     "202": "SetFieldTestingFlag",
                     "203": "GetPanelCrcMode",
                     "204": "SetPanelCrcMode",
-                    "205": "Cmd205",
-                    "206": "Cmd206",
-                    "207": "Cmd207",
-                    "208": "Cmd208",
-                    "209": "Cmd209",
-                    "210": "Cmd210",
-                    "211": "Cmd211",
-                    "212": "Cmd212",
-                    "213": "Cmd213",
-                    "214": "Cmd214",
-                    "215": "Cmd215",
-                    "216": "Cmd216",
-                    "217": "Cmd217",
-                    "218": "Cmd218",
+                    "205": "GetNxControllerSettingsEx",
+                    "206": "SetNxControllerSettingsEx",
+                    "207": "GetHearingProtectionSafeguardFlag",
+                    "208": "SetHearingProtectionSafeguardFlag",
+                    "209": "GetHearingProtectionSafeguardRemainingTime",
+                    "210": "SetHearingProtectionSafeguardRemainingTime",
+                    "211": "GetWirelessCertificationHtmlFileSize",
+                    "212": "GetWirelessCertificationHtmlFile",
+                    "213": "GetWirelessCertificationJpegFileSize",
+                    "214": "GetWirelessCertificationJpegFile",
+                    "215": "GetHighContrastFlag",
+                    "216": "SetHighContrastFlag",
+                    "217": "GetTextToSpeechFlag",
+                    "218": "SetTextToSpeechFlag",
                     "219": "GetTextMagnificationRatio",
-                    "220": "Cmd220",
+                    "220": "SetTextMagnificationRatio",
                     "221": "GetForceMonauralOutputFlag",
                     "222": "SetForceMonauralOutputFlag",
-                    "223": "Cmd223",
-                    "224": "Cmd224",
-                    "225": "Cmd225",
-                    "226": "Cmd226",
-                    "227": "Cmd227",
-                    "228": "Cmd228",
-                    "229": "Cmd229",
-                    "230": "Cmd230",
-                    "235": "Cmd235",
-                    "236": "Cmd236",
-                    "237": "Cmd237",
-                    "238": "Cmd238",
-                    "239": "Cmd239",
-                    "240": "Cmd240",
-                    "241": "Cmd241",
-                    "242": "Cmd242",
-                    "243": "Cmd243",
-                    "244": "Cmd244",
-                    "245": "Cmd245",
-                    "246": "Cmd246",
-                    "247": "Cmd247",
-                    "248": "Cmd248",
-                    "249": "Cmd249",
-                    "250": "Cmd250",
+                    "223": "GetUsbAudioVolumeSettings",
+                    "224": "SetUsbAudioVolumeSettings",
+                    "225": "GetTitleIconKeepFlag",
+                    "226": "SetTitleIconKeepFlag",
+                    "227": "GetBoldTextFlag",
+                    "228": "SetBoldTextFlag",
+                    "229": "GetSpeechToTextFlag",
+                    "230": "SetSpeechToTextFlag",
+                    "235": "GetColorFilterType",
+                    "236": "SetColorFilterType",
+                    "237": "GetPrioritizedOutputAudioDeviceSettings",
+                    "238": "SetPrioritizedOutputAudioDeviceSettings",
+                    "239": "GetPrioritizedInputAudioDeviceSettings",
+                    "240": "SetPrioritizedInputAudioDeviceSettings",
+                    "241": "GetTextToSpeechVoiceTypeForUi",
+                    "242": "SetTextToSpeechVoiceTypeForUi",
+                    "243": "GetLcdFlags",
+                    "244": "SetLcdFlags",
+                    "245": "GetTvHdrSettings",
+                    "246": "SetTvHdrSettings",
+                    "247": "IsColorInversionEnabled",
+                    "248": "SetColorInversionEnabled",
+                    "249": "GetKeyRemapEnableFlagOnQuickSettings",
+                    "250": "SetKeyRemapEnableFlagOnQuickSettings",
                     "251": "GetAccountIdentificationSettings",
                     "252": "SetAccountIdentificationSettings",
-                    "253": "Cmd253",
-                    "254": "Cmd254",
-                    "255": "Cmd255",
-                    "256": "Cmd256",
-                    "257": "Cmd257",
-                    "258": "Cmd258",
-                    "259": "Cmd259",
-                    "260": "Cmd260",
-                    "261": "Cmd261",
-                    "262": "Cmd262",
+                    "253": "GetDeviceLockPinCodeLength",
+                    "254": "GetDeviceLockPinCode",
+                    "255": "SetDeviceLockPinCode",
+                    "256": "GetDeviceLockEnableFlag",
+                    "257": "GetDeviceLockStartPenaltyTime",
+                    "258": "SetDeviceLockStartPenaltyTime",
+                    "259": "GetDeviceLockErrorCount",
+                    "260": "SetDeviceLockErrorCount",
+                    "261": "GetBatteryCareModeEnableFlag",
+                    "262": "SetBatteryCareModeEnableFlag",
                     "263": "AcquireVphymDirtyFlagEventHandle",
                     "264": "GetVphymDirtyFlags",
-                    "265": "Cmd265",
-                    "266": "Cmd266",
-                    "267": "Cmd267",
-                    "268": "Cmd268",
-                    "269": "Cmd269",
-                    "270": "Cmd270",
-                    "271": "Cmd271",
-                    "272": "Cmd272",
-                    "273": "Cmd273",
-                    "274": "Cmd274",
-                    "275": "Cmd275",
-                    "276": "Cmd276",
-                    "277": "Cmd277",
-                    "278": "Cmd278",
-                    "279": "Cmd279",
-                    "280": "Cmd280",
-                    "281": "Cmd281",
+                    "265": "GetInitialLaunchSettings",
+                    "266": "SetInitialLaunchSettings",
+                    "267": "GetManufacturingTimeStamp",
+                    "268": "SetManufacturingTimeStamp",
+                    "269": "GetInputNoiseReductionForCommunicationFlag",
+                    "270": "SetInputNoiseReductionForCommunicationFlag",
+                    "271": "GetChatTranscriptionSettings",
+                    "272": "SetChatTranscriptionSettings",
+                    "273": "GetBuiltInMicrophoneGain",
+                    "274": "SetBuiltInMicrophoneGain",
+                    "275": "GetBuiltInMicrophoneJackGain",
+                    "276": "SetBuiltInMicrophoneJackGain",
+                    "277": "GetUsbAudioInputDeviceGainSettings",
+                    "278": "SetUsbAudioInputDeviceGainSettings",
+                    "279": "SetBluetoothStackFlag",
+                    "280": "SetHidDebugOcdUsbFlag",
+                    "281": "SetHidDebugRailFlag",
                     "282": "ConvertToProductModel",
                     "283": "ConvertToProductModelName",
-                    "284": "Cmd284",
-                    "285": "Cmd285",
-                    "286": "Cmd286",
-                    "287": "Cmd287",
-                    "288": "Cmd288",
+                    "284": "GetSaveDataPurgedForRepairFlag",
+                    "285": "SetSaveDataPurgedForRepairFlag",
+                    "286": "GetAppletParameterSet",
+                    "287": "SetAppletParameterSet",
+                    "288": "BindChatTranscriptionSettingsChangedEvent",
                     "289": "GetDefaultAccountIdentificationFlagSet",
-                    "290": "Cmd290",
-                    "291": "Cmd291",
-                    "292": "Cmd292",
-                    "293": "Cmd293",
-                    "294": "Cmd294",
-                    "295": "Cmd295",
-                    "296": "Cmd296",
-                    "297": "Cmd297",
-                    "298": "Cmd298",
-                    "299": "Cmd299",
+                    "290": "GetMouseEnableFlag",
+                    "291": "SetMouseEnableFlag",
+                    "292": "GetTextToSpeechVoiceVolume",
+                    "293": "SetTextToSpeechVoiceVolume",
+                    "294": "GetTextToSpeechVoiceSpeed",
+                    "295": "SetTextToSpeechVoiceSpeed",
+                    "296": "GetSleepSettingsEx",
+                    "297": "SetSleepSettingsEx",
+                    "298": "GetMousePointerSpeedScale",
+                    "299": "SetMousePointerSpeedScale",
                     "300": "AcquirePushNotificationDirtyFlagEventHandle",
                     "301": "GetPushNotificationDirtyFlags",
-                    "302": "Cmd302",
-                    "303": "Cmd303",
-                    "304": "Cmd304",
-                    "305": "Cmd305",
+                    "302": "GetTvHdrSettingsEx",
+                    "303": "SetTvHdrSettingsEx",
+                    "304": "GetOunceProControllerMicrophoneJackGain",
+                    "305": "SetOunceProControllerMicrophoneJackGain",
                     "306": "GetPinCodeReregistrationGuideAccounts",
                     "307": "SetPinCodeReregistrationGuideAccounts",
-                    "308": "Cmd308",
-                    "309": "Cmd309",
-                    "310": "Cmd310",
-                    "311": "Cmd311",
-                    "312": "Cmd312",
+                    "308": "GetChatTranscriptionSettings",
+                    "309": "SetChatTranscriptionSettings",
+                    "310": "GetDeviceLockPinCodeLsbParity",
+                    "311": "VerifyDeviceLockPinCode",
+                    "312": "GetDeviceLockVeificationForbiddenFlag",
                     "315": "GetHttpAuthConfigs",
                     "319": "GetAccountUserSettings",
                     "320": "SetAccountUserSettings",
@@ -1848,7 +1879,9 @@
                     "325": "SetPtmQhClearCount",
                     "326": "GetAirPlaneModeRestoreFlagSet",
                     "327": "SetAirPlaneModeRestoreFlagSet",
-                    "328": "DeleteSettingsPerAccount"
+                    "328": "DeleteSettingsPerAccount",
+                    "335": "GetPtmChargeTimerExpiredCount",
+                    "336": "SetPtmChargeTimerExpiredCount"
                 }
             },
             "IHipcManager": {
@@ -1936,7 +1969,9 @@
                     "16": "SetValueForSleepState",
                     "17": "GetMaxDebounceTime",
                     "18": "SetDirectionInput",
-                    "19": "SetDirectionOutput"
+                    "19": "SetDirectionOutput",
+                    "20": "Cmd20",
+                    "21": "Cmd21"
                 }
             },
             "i2c, i2c:pcv": {
@@ -2437,6 +2472,10 @@
                     "40101": "RequestAutoSubscription",
                     "40200": "ClearStorage",
                     "40201": "ClearSubscriptionStatusAll",
+                    "50100": {
+                        "name": "Cmd50100",
+                        "out": "nn::news::detail::ipc::IBackgroundTaskSuspensionService"
+                    },
                     "90100": "GetNewsDatabaseDump"
                 }
             },
@@ -2447,6 +2486,11 @@
                     "2": "GetResult",
                     "3": "GetSize",
                     "4": "Cmd4"
+                }
+            },
+            "IBackgroundTaskSuspensionService": {
+                "nn::news::detail::ipc::IBackgroundTaskSuspensionService": {
+                    "0": "Cmd0"
                 }
             },
             "INewlyArrivedEventHolder": {
@@ -2774,7 +2818,8 @@
                     "1": "IsProcessing",
                     "2": "GetResult",
                     "3": "GetSystemEventReadableHandle",
-                    "4": "SetChannels"
+                    "4": "SetChannels",
+                    "5": "Cancel"
                 }
             },
             "IRequest": {
@@ -2948,7 +2993,8 @@
                     "10": "LoadAndApplySettings",
                     "11": "Cmd11",
                     "12": "Cmd12",
-                    "13": "Cmd13"
+                    "13": "Cmd13",
+                    "14": "Cmd14"
                 }
             },
             "ts": {
@@ -3042,10 +3088,11 @@
                     "37": "SetSocketBufferAttribute",
                     "38": "Cmd38",
                     "39": "NoSfEventFd",
-                    "40": "Cmd40",
+                    "40": "ShutdownAllSockets",
                     "41": "Cmd41",
-                    "42": "Cmd42",
+                    "42": "SendMMsgNoMem",
                     "43": "Cmd43",
+                    "44": "Cmd44",
                     "200": "SetThreadCoreMask",
                     "201": "GetThreadCoreMask"
                 }
@@ -3106,7 +3153,13 @@
                     "12": "GetAddrInfoRequestWithOptions",
                     "13": "GetNameInfoRequestWithOptions",
                     "14": "ResolverSetOptionRequest",
-                    "15": "ResolverGetOptionRequest"
+                    "15": "ResolverGetOptionRequest",
+                    "16": "ReportTelemetry",
+                    "100": "QueryAddrInfoRequestWithOptions",
+                    "101": "QueryNameInfoRequestWithOptions",
+                    "102": "FetchAddrInfoRequestWithOptions",
+                    "103": "FetchNameInfoRequestWithOptions",
+                    "104": "CancelQuery"
                 }
             },
             "dns:priv": {
@@ -3239,6 +3292,10 @@
                     "137": "SetNpadGcAnalogStick8bitRawValue",
                     "138": "SetSceneIdForPrivateApp",
                     "139": "GetSceneIdForPrivateApp",
+                    "140": "IsFirmwareUpdateAvailableForDebug",
+                    "150": "GetSixAxisSensorIcSettings",
+                    "151": "SetSixAxisSensorIcSettings",
+                    "160": "GetSixAxisSensorIcAccelerationOffset",
                     "200": "GetVibrationDeviceInfo",
                     "201": "SendVibrationValue",
                     "202": "GetActualVibrationValue",
@@ -3273,6 +3330,9 @@
                     "312": "ForceDeactivateConsoleSixAxisSensor",
                     "320": "EnableNpadImu",
                     "321": "DisableNpadImu",
+                    "322": "SetNpadImuSupportedFeatures",
+                    "323": "EnableNpadImuHandle",
+                    "324": "DisableNpadImuHandle",
                     "400": "IsUsbFullKeyControllerEnabled",
                     "401": "EnableUsbFullKeyController",
                     "402": "IsUsbFullKeyControllerConnected",
@@ -3942,7 +4002,8 @@
                     "11": "EnableJoyPollingReceiveMode",
                     "12": "DisableJoyPollingReceiveMode",
                     "13": "GetPollingData",
-                    "14": "SetStatusManagerType"
+                    "14": "SetStatusManagerType",
+                    "17": "Cmd17"
                 }
             },
             "xcd:sys": {
@@ -4111,7 +4172,8 @@
                     "10": "RequestUpdateAuto",
                     "11": "ExecuteAudioRendererRendering",
                     "12": "SetVoiceDropParameter",
-                    "13": "GetVoiceDropParameter"
+                    "13": "GetVoiceDropParameter",
+                    "14": "SetAsyncMemoryPoolControlEnabled"
                 }
             },
             "IAudioDevice": {
@@ -5269,9 +5331,9 @@
                         "name": "CreateAuthorizationRequest",
                         "out": "nn::account::nas::IAuthorizationRequest"
                     },
-                    "151": "Cmd151",
-                    "152": "Cmd152",
-                    "153": "Cmd153",
+                    "151": "CreateAuthorizationRequestForAccountProfile",
+                    "152": "RefreshNasApplicationAuthorizationCacheForAccountProfileAsync",
+                    "153": "GetNasApplicationAuthorizationCacheForAccountProfile",
                     "160": "RequiresUpdateNetworkServiceAccountIdTokenCache",
                     "161": "RequireReauthenticationOfNetworkServiceAccount",
                     "170":  {
@@ -5287,6 +5349,7 @@
                         "name": "ResumeProcedureToReauthenticateNintendoAccount",
                         "out": "nn::account::nas::IOAuthProcedureForNintendoAccountReauthentication"
                     },
+                    "190": "GetRequestForNintendoAccountEula",
                     "200": "IsRegistered",
                     "201": {
                         "name": "RegisterAsync",
@@ -5355,7 +5418,7 @@
                         "out": "nn::account::detail::IAsyncContext"
                     },
                     "410": {
-                        "name": "Cmd410",
+                        "name": "GetPinCodeErrorCount",
                         "out": "nn::account::detail::IAsyncContext"
                     },
                     "900": "GetAuthenticationInfoForWin",
@@ -5421,7 +5484,10 @@
             },
             "UnknownInterface2250":{
                 "nn::account::nas::UnnamedInterface": {
-                    "10": "Cmd10",
+                    "10": {
+                        "name": "Cmd10",
+                        "out": "nn::account::detail::IAsyncContext"
+                    },
                     "19": "Cmd19",
                     "21": "Cmd21",
                     "23": "Cmd23"
@@ -5630,7 +5696,8 @@
                     "182": {
                         "name": "ResumeProcedureToReauthenticateNintendoAccount",
                         "out": "nn::account::nas::IOAuthProcedureForNintendoAccountReauthentication"
-                    }
+                    },
+                    "190": "GetRequestForNintendoAccountEula"
                 }
             },
             "IProfile": {
@@ -6462,7 +6529,13 @@
                     "19": "Cmd19",
                     "20": "Cmd20",
                     "21": "Cmd21",
-                    "22": "Cmd22"
+                    "22": "Cmd22",
+                    "23": "Cmd23",
+                    "24": "Cmd24",
+                    "25": "Cmd25",
+                    "26": "Cmd26",
+                    "27": "Cmd27",
+                    "28": "Cmd28"
                 }
             },
             "IReadOnlyApplicationRecordInterface": {
@@ -6666,6 +6739,7 @@
                     },
                     "86": "EnableApplicationCrashReport",
                     "87": "IsApplicationCrashReportEnabled",
+                    "88": "Cmd88",
                     "90": "BoostSystemMemoryResourceLimit",
                     "91": "DeprecatedLaunchApplication",
                     "92": "GetRunningApplicationProgramId",
@@ -6772,6 +6846,7 @@
                     "428": "Cmd428",
                     "429": "Cmd429",
                     "430": "Cmd430",
+                    "431": "Cmd431",
                     "502": {
                         "name": "RequestCheckGameCardRegistration",
                         "out": "nn::ns::detail::IAsyncResult"
@@ -6816,6 +6891,7 @@
                     "609": "ListAvailabilityAssuredAddOnContent",
                     "610": "GetInstalledContentMetaStorage",
                     "611": "PrepareAddOnContent",
+                    "612": "Cmd612",
                     "700": "PushDownloadTaskList",
                     "701": "ClearTaskStatusList",
                     "702": "RequestDownloadTaskList",
@@ -7444,7 +7520,9 @@
                     "707": "EnableAutoCommit",
                     "708": "DisableAutoCommit",
                     "709": "TriggerDynamicCommitEvent",
-                    "710": "Cmd710"
+                    "710": "Cmd710",
+                    "711": "Cmd711",
+                    "712": "Cmd712"
                 }
             },
             "IContentManagementInterface": {
@@ -7500,7 +7578,9 @@
                     "21": "PrepareLaunchApplication",
                     "22": "LaunchApplication",
                     "23": "GetProgramIdByApplicationLaunchInfo",
-                    "24": "DestroyApplicationLaunchPreparation"
+                    "24": "DestroyApplicationLaunchPreparation",
+                    "25": "Cmd25",
+                    "26": "Cmd26"
                 }
             },
             "acc:su": {
@@ -7819,6 +7899,7 @@
                         "name": "ResumeProcedureToReauthenticateNintendoAccount",
                         "out": "nn::account::nas::IOAuthProcedureForNintendoAccountReauthentication"
                     },
+                    "190": "GetRequestForNintendoAccountEula",
                     "200": "IsRegistered",
                     "201": {
                         "name": "RegisterAsync",
@@ -7950,7 +8031,10 @@
             },
             "UnknownInterface2250":{
                 "nn::account::nas::UnnamedInterface": {
-                    "10": "Cmd10",
+                    "10": {
+                        "name": "Cmd10",
+                        "out": "nn::account::detail::IAsyncContext"
+                    },
                     "19": "Cmd19",
                     "21": "Cmd21",
                     "23": "Cmd23"
@@ -8156,7 +8240,8 @@
                     "182": {
                         "name": "ResumeProcedureToReauthenticateNintendoAccount",
                         "out": "nn::account::nas::IOAuthProcedureForNintendoAccountReauthentication"
-                    }
+                    },
+                    "190": "GetRequestForNintendoAccountEula"
                 }
             },
             "IProfile": {
@@ -8451,6 +8536,7 @@
                     "22": "GetApplicationAreaSize",
                     "23": "AttachAvailabilityChangeEvent",
                     "24": "RecreateApplicationArea",
+                    "25": "StartDetectionWithFilterNfp",
                     "300": "InitializeWithExtendedApplicationArea",
                     "301": "GetExtendedApplicationAreaInfo",
                     "302": "GetExtendedApplicationArea",
@@ -8486,6 +8572,7 @@
                     "20": "GetDeviceState",
                     "21": "GetNpadId",
                     "23": "AttachAvailabilityChangeEvent",
+                    "25": "StartDetectionWithFilterNfp",
                     "100": "Format",
                     "101": "GetAdminInfo",
                     "102": "GetRegisterInfoPrivate",
@@ -8534,6 +8621,7 @@
                     "22": "GetApplicationAreaSize",
                     "23": "AttachAvailabilityChangeEvent",
                     "24": "RecreateApplicationArea",
+                    "25": "StartDetectionWithFilterNfp",
                     "100": "Format",
                     "101": "GetAdminInfo",
                     "102": "GetRegisterInfoPrivate",
@@ -8683,7 +8771,13 @@
                     "12": "GetIsBatteryEnoughForFullAwake",
                     "13": "GetIsCharging",
                     "14": "Cmd14",
-                    "15": "Cmd15"
+                    "15": "Cmd15",
+                    "16": "Cmd16",
+                    "17": "Cmd17",
+                    "18": "Cmd18",
+                    "19": "Cmd19",
+                    "20": "Cmd20",
+                    "21": "Cmd21"
                 }
             },
             "IChargeSession": {
@@ -8726,7 +8820,9 @@
                     "2": "SetClockRate",
                     "3": "SetBridgePowerSupply",
                     "4": "Cmd4",
-                    "5": "Cmd5"
+                    "5": "Cmd5",
+                    "6": "Cmd6",
+                    "7": "Cmd7"
                 }
             },
             "IChargeSetterSession": {
@@ -8738,12 +8834,16 @@
                     "4": "Cmd4",
                     "5": "Cmd5",
                     "6": "Cmd6",
-                    "7": "Cmd7"
+                    "7": "Cmd7",
+                    "8": "Cmd8",
+                    "9": "Cmd9"
                 }
             },
             "IThermalSetterSession": {
                 "nn::hshl::IThermalSetterSession": {
-                    "0": "SetAbnormalTemperatureSet"
+                    "0": "SetAbnormalTemperatureSet",
+                    "1": "Cmd1",
+                    "2": "Cmd2"
                 }
             },
             "ins:r": {
@@ -8838,6 +8938,7 @@
                     "13002": "Cmd13002",
                     "13003": "Cmd13003",
                     "13004": "Cmd13004",
+                    "13005": "Cmd13005",
                     "20100": "PopReport",
                     "20200": "GetPushEventReadableHandle",
                     "20300": "Shutdown",
@@ -9037,7 +9138,7 @@
                     "2101": "GenerateCurrentAlbumFileId",
                     "2102": "GenerateApplicationAlbumEnrty",
                     "2103": "Cmd2103",
-                    "2104": "Cmd104",
+                    "2104": "Cmd2104",
                     "2201": "SaveAlbumScreenShotFile",
                     "2202": "SaveAlbumScreenShotFileEx",
                     "2301": "SetOverlayScreenShotThumbnailData",
@@ -9122,6 +9223,7 @@
                     "170": "Cmd170",
                     "171": "Cmd171",
                     "172": "Cmd172",
+                    "180": "Cmd180",
                     "202": "SaveEditedScreenShot",
                     "301": "GetLastOverlayScreenShotThumbnail",
                     "302": "GetLastOverlayMovieThumbnail",
@@ -9129,6 +9231,7 @@
                     "501": "GetRequiredStorageSpaceSizeToCopyAll",
                     "502": "Cmd502",
                     "600": "Cmd600",
+                    "610": "Cmd610",
                     "1001": "LoadAlbumScreenShotThumbnailImageEx0",
                     "1002": "LoadAlbumScreenShotImageEx1",
                     "1003": "LoadAlbumScreenShotThumbnailImageEx1",
@@ -9346,7 +9449,7 @@
                     "200": "GetLastApplicationExitReason",
                     "210": "Cmd210",
                     "220": "SetAudioOutputPolicy",
-                    "230": "Cmd230",
+                    "230": "IsTensorRtSupported",
                     "300": {
                         "name": "CreateMovieWriter",
                         "out": "nn::am::service::IMovieWriter"
@@ -9391,7 +9494,7 @@
             "IMovieWriterAm": {
                 "nn::am::service::IMovieWriter": {
                     "0": {
-                        "name": "",
+                        "name": "Cmd0",
                         "out": "nn::grcsrv::IMovieWriter"
                     }
                 }
@@ -9591,6 +9694,8 @@
                     "130": "EnableStartupLogoDisappearedMessage",
                     "200": "GetOperationModeSystemInfo",
                     "300": "GetSettingsPlatformRegion",
+                    "310": "Cmd310",
+                    "320": "Cmd320",
                     "400": "ActivateMigrationService",
                     "401": "DeactivateMigrationService",
                     "500": "DisableSleepTillShutdown",
@@ -9600,8 +9705,8 @@
                     "600": "SetHidInputMagnificationForApplication",
                     "610": "Cmd610",
                     "611": "Cmd611",
-                    "650": "Cmd650",
-                    "651": "Cmd651",
+                    "650": "BeginUsingCameraResource",
+                    "651": "EndUsingCameraResource",
                     "900": "SetRequestExitToLibraryAppletAtExecuteNextProgramEnabled",
                     "910": "GetLaunchRequiredTick",
                     "1000": "BeginVrMode3d",
@@ -9610,8 +9715,8 @@
                     "1003": "GetVrLaboGoggleViewport",
                     "1004": "GetPanelPhysicalSizeForSpecificTitle",
                     "1005": "GetPanelResolutionForSpecificTitle",
-                    "2000": "Cmd2000",
-                    "2010": "Cmd2010"
+                    "2000": "SetRtcModeChangedMessageEnabled",
+                    "2010": "GetCurrentDisplayLayoutRatio"
                 }
             },
             "ILockAccessor": {
@@ -9689,16 +9794,17 @@
                     "220": "Cmd220",
                     "221": "Cmd221",
                     "230": "Cmd230",
+                    "240": "Cmd240",
                     "1000": {
                         "name": "GetDebugStorageChannel",
                         "out": "nn::am::service::IStorageChannel"
                     },
                     "2000": "GetGraphicsSupervisor",
-                    "2100": "Cmd2100",
-                    "2200": "Cmd2200",
-                    "2300": "Cmd2300",
-                    "2400": "Cmd2400",
-                    "2401": "Cmd2401",
+                    "2100": "SetRecordingLayerEnabled",
+                    "2200": "SetSharingLayerEnabled",
+                    "2300": "SetCopyrightLayerEnabled",
+                    "2400": "SetRtcScreenSharingAudioEnabled",
+                    "2401": "SetStreamPlayMirroringAudioEnabled",
                     "2402": "Cmd2402"
                 }
             },
@@ -9806,10 +9912,14 @@
                         "name": "CreateFloatingLibraryAppletAccepterForDebug",
                         "out": "nn::am::service::IAllSystemAppletProxiesService"
                     },
+                    "210": {
+                        "name": "Cmd210",
+                        "out": "nn::am::service::IAllSystemAppletProxiesService"
+                    },
                     "300": "TerminateAllRunningApplicationsForDebug",
-                    "400": "Cmd400",
-                    "401": "Cmd401",
-                    "402": "Cmd402",
+                    "400": "LaunchDebugAppletForDebug",
+                    "401": "TerminateDebugAppletForDebug",
+                    "402": "IsDebugAppletLaunchedForDebug",
                     "403": "Cmd403",
                     "410": "CreateGeneralStorageForDebug",
                     "411": "ReadGeneralStorageForDebug",
@@ -9818,6 +9928,8 @@
                     "431": "Cmd431",
                     "900": "GetGrcProcessLaunchedSystemEvent",
                     "910": "Cmd910",
+                    "1000": "Cmd1000",
+                    "1001": "Cmd1001",
                     "2000": "Cmd2000",
                     "10000": "Cmd10000"
                 }
@@ -9968,6 +10080,7 @@
                     "13": "UpdateDefaultDisplayResolution",
                     "14": "ShouldSleepOnBoot",
                     "15": "GetHdcpAuthenticationFailedEvent",
+                    "16": "Cmd16",
                     "30": {
                         "name": "OpenCradleFirmwareUpdater",
                         "out": "nn::am::service::ICradleFirmwareUpdater"
@@ -10031,6 +10144,7 @@
                     "140": "GetDesirableUids",
                     "150": "ReportApplicationExitTimeout",
                     "160": "SetApplicationAttribute",
+                    "161": "Cmd161",
                     "170": "HasSaveDataAccessPermission",
                     "180": "PushToFriendInvitationStorageChannel",
                     "190": "PushToNotificationStorageChannel",
@@ -10137,7 +10251,8 @@
                     "2000": "Cmd2000",
                     "2010": "Cmd2010",
                     "3000": "Cmd3000",
-                    "3010": "Cmd3010"
+                    "3010": "Cmd3010",
+                    "10000": "Cmd10000"
                 }
             },
             "IReceiverService": {
@@ -10541,7 +10656,9 @@
                     },
                     "101": "SetThreadCoreMask",
                     "102": "GetThreadCoreMask",
-                    "103": "VerifySignature"
+                    "103": "VerifySignature",
+                    "104": "ResetCoverageCounters",
+                    "105": "DumpCoverageProfile"
                 }
             },
             "ISslContextForSystem": {
@@ -10659,7 +10776,8 @@
                         "out": "nn::nim::detail::IAsyncValue"
                     },
                     "600": "IsInitialLaunchFinished",
-                    "601": "NotifyFinishInitialLaunch"
+                    "601": "NotifyFinishInitialLaunch",
+                    "700": "Cmd700"
                 }
             },
             "IAsyncValue": {
@@ -11099,6 +11217,10 @@
                     "179": "Cmd179",
                     "180": "Cmd180",
                     "181": "Cmd181",
+                    "182": "Cmd182",
+                    "183": "Cmd183",
+                    "184": "Cmd184",
+                    "185": "Cmd185",
                     "2000": {
                         "name": "Cmd2000",
                         "out": "nn::nim::detail::IAsyncData"
@@ -11287,6 +11409,18 @@
                         "name": "Cmd2051",
                         "out": "nn::nim::detail::IAsyncData"
                     },
+                    "2052": {
+                        "name": "Cmd2052",
+                        "out": "nn::nim::detail::IAsyncResult"
+                    },
+                    "2053": {
+                        "name": "Cmd2053",
+                        "out": "nn::nim::detail::IAsyncData"
+                    },
+                    "2054": {
+                        "name": "Cmd2045",
+                        "out": "nn::nim::detail::IAsyncResult"
+                    },
                     "3000": {
                         "name": "RequestLatestApplicationIcon",
                         "out": "nn::nim::detail::IAsyncData"
@@ -11453,7 +11587,9 @@
                     "20": "GetPairedAudioDevices",
                     "21": "RemoveAudioDevicePairing",
                     "22": "RequestAudioDeviceConnectionRejection",
-                    "23": "CancelAudioDeviceConnectionRejection"
+                    "23": "CancelAudioDeviceConnectionRejection",
+                    "24": "Cmd24",
+                    "25": "Cmd25"
                 }
             },
             "btm:u": {
@@ -11530,7 +11666,7 @@
         },
         "Error_Report_services": {
             "erpt:c": {
-                "nn::erpt::sf::IContext": {
+                "nn::erpt::ipc::IContext": {
                     "0": "SubmitContext",
                     "1": "CreateReportV0",
                     "2": "SetInitialLaunchSettingsCompletionTime",
@@ -11546,6 +11682,7 @@
                     "12": "CreateReport",
                     "13": "SubmitAttachmentWithLz4Compression",
                     "14": "CreateReportWithSpecifiedReprotId",
+                    "15": "SubmitAttachment",
                     "20": "RegisterRunningApplet",
                     "21": "UnregisterRunningApplet",
                     "22": "UpdateAppletSuspendedDuration",
@@ -11641,7 +11778,15 @@
                     "1": "GetUnsigned64",
                     "2": "GetSigned32",
                     "3": "GetUnsigned32",
-                    "4": "GetByte"
+                    "4": "GetByte",
+                    "5": "Cmd5",
+                    "6": "Cmd6",
+                    "7": "Cmd7",
+                    "8": "Cmd8",
+                    "9": "Cmd9",
+                    "10": "Cmd10",
+                    "11": "Cmd11",
+                    "12": "Cmd12"
                 }
             },
             "IProfileUpdateObserver": {
@@ -11654,7 +11799,8 @@
             "IProfileControllerForDebug": {
                 "nn::sprofile::srv::IProfileControllerForDebug": {
                     "2000": "Reset",
-                    "2001": "GetRaw"
+                    "2001": "GetRaw",
+                    "2002": "Cmd2002"
                 }
             },
             "ISprofileServiceForBgAgent": {
@@ -11871,7 +12017,8 @@
                     "6": "ResetDevice",
                     "7": "StartBootFirmwareUpdate",
                     "8": "StartBootFirmwareUpdateWithSpecifiedImage",
-                    "9": "GetBootFirmwareVersion"
+                    "9": "GetBootFirmwareVersion",
+                    "10": "Cmd10"
                 }
             },
             "IManagerDisplayService": {
@@ -12071,6 +12218,7 @@
                     "1020": "ConfirmLaunchSharedApplicationPermission",
                     "1021": "TryBeginFreeCommunicationForStreamPlay",
                     "1022": "EndFreeCommunicationForStreamPlay",
+                    "1023": "GetRestrictedFeatureFlagSet",
                     "1031": "IsRestrictionEnabled",
                     "1032": "GetSafetyLevel",
                     "1033": "SetSafetyLevel",
@@ -12107,6 +12255,7 @@
                     "1403": "IsPairingActive",
                     "1406": "GetSettingsLastUpdated",
                     "1411": "GetPairingAccountInfo",
+                    "1412": "GetAllPairingAccountInfo",
                     "1421": "GetAccountNickname",
                     "1424": "GetAccountState",
                     "1425": "RequestPostEvents",
@@ -12122,6 +12271,7 @@
                     "1457": "GetPlayTimerEventToRequestSuspension",
                     "1458": "IsPlayTimerAlarmDisabled",
                     "1459": "GetPlayTimerRemainingTimeDisplayInfo",
+                    "1460": "GetWatcherStatusDisplayInfo",
                     "1471": "NotifyWrongPinCodeInputManyTimes",
                     "1472": "CancelNetworkRequest",
                     "1473": "GetUnlinkedEvent",
@@ -12172,6 +12322,9 @@
                     "2022": "FinishRequestCopyPairing",
                     "2023": "IsFromPairingActiveDevice",
                     "2024": "RollbackCopyPairing",
+                    "2025": "DownloadAllAccountMiiImagesAsync",
+                    "2026": "FinishDownloadAllAccountMiiImagesAsync",
+                    "2027": "GetPairingAccountChangedEvent",
                     "3001": "GetErrorContextChangedEvent",
                     "9401": "GetEvents",
                     "9402": "GetEventsWithJson",
@@ -12179,6 +12332,7 @@
                     "9404": "GetPostEventInterval",
                     "9405": "SetPostEventInterval",
                     "9406": "GetDeviceIdForDebug",
+                    "9407": "PrepareMigrationWithEmulatedOldSaveDataForDebug",
                     "145601": "GetPlayTimerSettings",
                     "195101": "SetPlayTimerSettingsForDebug"
                 }
@@ -12362,7 +12516,13 @@
                     "201": "RequestChangeStateForceTimed",
                     "202": "RequestChangeStateForceAsync",
                     "203": "Cmd203",
-                    "204": "Cmd204"
+                    "204": "Cmd204",
+                    "301": "GetPassword",
+                    "302": "GetAllImmigration",
+                    "303": "GetNotificationHistories",
+                    "304": "GetPersistentConnectionSummary",
+                    "305": "GetDigitalTwinSummary",
+                    "306": "GetDigitalTwinValue"
                 }
             },
             "ISubscriptionUpdateNotifier": {
@@ -13323,7 +13483,8 @@
                     "24": "ConvertCoreDataToCharInfo",
                     "25": "ConvertCharInfoToCoreData",
                     "26": "Append",
-                    "27": "ImportMigrationData"
+                    "27": "Wrap",
+                    "28": "Unwrap"
                 }
             },
             "miiimg": {
@@ -13360,8 +13521,16 @@
                     "9": "Cmd9",
                     "20": "Cmd20",
                     "30": "Cmd30",
+                    "31": "Cmd31",
+                    "32": "Cmd32",
+                    "33": "Cmd33",
+                    "34": "Cmd34",
+                    "35": "Cmd35",
+                    "36": "Cmd36",
+                    "37": "Cmd37",
                     "100": "Cmd100",
-                    "101": "Cmd101"
+                    "101": "Cmd101",
+                    "102": "Cmd102"
                 }
             },
             "SDBNotIdentified": {
@@ -13394,10 +13563,15 @@
                     "19": "QueryApplicationPlayStatisticsByUserAccountIdForSystem",
                     "30": "Cmd30",
                     "31": "Cmd31",
+                    "32": "Cmd32",
+                    "33": "Cmd33",
+                    "34": "Cmd34",
+                    "35": "Cmd35",
                     "100": "Cmd100",
                     "110": "Cmd110",
                     "118": "Cmd118",
-                    "119": "Cmd118"
+                    "119": "Cmd119",
+                    "130": "Cmd130"
                 }
             },
             "pl:s": {
@@ -13580,6 +13754,7 @@
                     "1": "GetApplicationId",
                     "2": "GetServerProfile",
                     "3": "ListApplicationIds",
+                    "4": "Cmd4",
                     "100": "PrepareAsync",
                     "101": "GetConnectionRequirement",
                     "102": "Cmd102",
@@ -13588,6 +13763,7 @@
                     "202": "GetClientProductModel",
                     "203": "GetTransferEventId",
                     "204": "Cmd204",
+                    "205": "Cmd205",
                     "210": "WaitAcceptanceAsync",
                     "220": "Cmd220",
                     "300": "ProcessTransferAsync",
@@ -13615,6 +13791,7 @@
                     "302": "GetImmigrantUid",
                     "303": "GetApplicationId",
                     "304": "ListApplicationIds",
+                    "305": "Cmd305",
                     "310": "GetCurrentTransferInfo",
                     "320": "TransferNextAsync",
                     "350": "SuspendAsync",
@@ -13637,6 +13814,7 @@
                     "40": "Cmd40",
                     "50": "Cmd50",
                     "60": "Cmd60",
+                    "70": "Cmd70",
                     "100": {
                         "name": "Cmd100",
                         "out": "nn::migration::detail::IAsyncContext"
@@ -13873,6 +14051,8 @@
             },
             "olsc:s": {
                 "nn::olsc::srv::IServiceGetter": {
+                    "1000": "Cmd1000",
+                    "1001": "Cmd1001",
                     "10000": {
                         "name": "GetOlscServiceForSystemService",
                         "out": "nn::olsc::srv::IOlscServiceForSystemService"
@@ -13957,6 +14137,7 @@
                         "name": "Cmd1000",
                         "out": "nn::olsc::srv::IAsyncPlayablePlatformRequest"
                     },
+                    "1001": "Cmd1001",
                     "1010": "Cmd1010",
                     "1011": "Cmd1011",
                     "1012": "Cmd1012",
@@ -14131,7 +14312,8 @@
                     "1": "Cmd1",
                     "2": "Cmd2",
                     "3": "Cmd3",
-                    "100": "Cmd100"
+                    "100": "Cmd100",
+                    "101": "Cmd101"
                 }
             },
             "IDaemonController": {
@@ -14281,86 +14463,65 @@
             }
         },
         "OMM_services": {
-            "spsm": {
-                "nn::spsm::detail::IPowerStateInterface": {
-                    "0": "GetCurrentState",
-                    "1": "EnterSleep",
-                    "2": "GetLastWakeReason",
-                    "3": "Shutdown",
-                    "4": "GetNotificationMessageEventHandle",
-                    "5": "ReceiveNotificationMessage",
-                    "6": "AnalyzeLogForLastSleepWakeSequence",
-                    "7": "ResetEventLog",
-                    "8": "AnalyzePerformanceLogForLastSleepWakeSequence",
-                    "9": "ChangeHomeButtonLongPressingTime",
-                    "10": "PutErrorState",
-                    "11": "InvalidateCurrentHomeButtonPressing",
-                    "12": "EmulatePowerButtonPressedBriefly",
-                    "13": "EmulatePowerButtonPressedFor7Sec",
-                    "14": "SetAlwaysRebootFlag",
-                    "15": "Cmd15",
-                    "16": "Cmd16"
-                }
-            },
             "ommdisp": {
                 "nn::omm::srv::IDisplayLayerControl": {
-                    "100": "Cmd100",
-                    "101": "Cmd101",
-                    "110": "Cmd110",
-                    "111": "Cmd111",
-                    "200": "Cmd200",
-                    "210": "Cmd210",
-                    "300": "Cmd300",
-                    "301": "Cmd301",
-                    "302": "Cmd302",
-                    "303": "Cmd303",
-                    "304": "Cmd304",
-                    "305": "Cmd305",
-                    "306": "Cmd306",
-                    "307": "Cmd307",
-                    "308": "Cmd308",
-                    "309": "Cmd309",
-                    "310": "Cmd310",
-                    "311": "Cmd311",
-                    "312": "Cmd312",
-                    "313": "Cmd313",
-                    "314": "Cmd314",
-                    "315": "Cmd315",
-                    "316": "Cmd316",
-                    "330": "Cmd330",
-                    "340": "Cmd340",
-                    "341": "Cmd341",
-                    "342": "Cmd342",
-                    "343": "Cmd343",
-                    "344": "Cmd344",
-                    "345": "Cmd345",
-                    "346": "Cmd346",
-                    "350": "Cmd350",
-                    "351": "Cmd351",
-                    "360": "Cmd360",
-                    "361": "Cmd361",
-                    "370": "Cmd370",
-                    "371": "Cmd371",
-                    "400": "Cmd400",
-                    "410": "Cmd410",
+                    "100": "CreateIndirectLayer",
+                    "101": "DestroyIndirectLayer",
+                    "110": "CreateIndirectConsumerEndPoint",
+                    "111": "DestroyIndirectConsumerEndPoint",
+                    "200": "Deactivate",
+                    "210": "Activate",
+                    "300": "IsActivated",
+                    "301": "CreateLayer",
+                    "302": "DestroyLayer",
+                    "303": "GetLayerType",
+                    "304": "GetLayerTargetKind",
+                    "305": "GetLayerSourceKind",
+                    "306": "SetLayerType_1",
+                    "307": "SetLayerType_2",
+                    "308": "SetLayerType_3",
+                    "309": "SetLayerType_4",
+                    "310": "SetLayerType_5",
+                    "311": "SetLayerTarget_1",
+                    "312": "SetLayerTarget_3_Value",
+                    "313": "SetLayerTarget_2",
+                    "314": "SetLayerSource_1",
+                    "315": "SetLayerSource_2",
+                    "316": "ImportSharedBuffer",
+                    "330": "SetLayerForeground",
+                    "340": "GetLayerManagedLayerId",
+                    "341": "GetLayerSubManagedLayerId",
+                    "342": "GetLayerIndirectProducerId",
+                    "343": "GetLayerSharedLayerId",
+                    "344": "SetLayerOrder",
+                    "345": "SetLayerZ",
+                    "346": "SetLayerTransparent",
+                    "350": "SetLayerTransitionPending",
+                    "351": "SetLayerConductor",
+                    "360": "SetLayerOpaqueOnSecondary",
+                    "361": "SetLayerTransparentOnSecondary",
+                    "370": "SetLayerOpaqueOnPrimary",
+                    "371": "SetLayerTransparentOnPrimary",
+                    "400": "SetFillScreenVisible",
+                    "410": "SetFillScreenColor",
                     "500": "CmdInitializeApplicationCopyrightSharedBuffer",
                     "501": "FinalizeApplicationCopyrightSharedBuffer",
-                    "510": "Cmd510",
-                    "520": "Cmd520",
-                    "540": "Cmd540",
+                    "510": "SetApplicationCopyrightImage",
+                    "520": "HasApplicationCopyrightImage",
+                    "540": "SetApplicationCopyrightVisible",
                     "600": "Cmd600",
-                    "610": "Cmd610",
-                    "611": "Cmd611",
-                    "612": "Cmd612",
-                    "700": "Cmd700",
-                    "701": "Cmd701",
-                    "710": "Cmd710",
-                    "711": "Cmd711",
+                    "610": "ProcessScreenShotRequest",
+                    "611": "CancelScreenShotRequest",
+                    "612": "FailScreenShotRequest",
+                    "700": "GetScreenImageSlot",
+                    "701": "IsScreenImageEnabled",
+                    "710": "CaptureForegroundLayer",
+                    "711": "CaptureLayer",
                     "720": "CopyImageFromCaptureBuffer",
-                    "721": "Cmd721",
-                    "722": "Cmd722",
-                    "800": "Cmd800",
-                    "810": "Cmd810",
+                    "721": "FillScreenImage",
+                    "722": "CopyScreenImage",
+                    "800": "GetFullHdResolution",
+                    "810": "SetDisplayMagnification",
                     "900": "Cmd900"
                 }
             },
@@ -14372,6 +14533,11 @@
                     "3": "SetHandlingContext",
                     "4": "LoadAndApplySettings",
                     "5": "ReportUserIsActive"
+                }
+            },
+            "IHipcManager": {
+                "nn::sf::hipc::detail::IHipcManager": {
+                    "_ref": "Framework"
                 }
             },
             "omm": {
@@ -14409,16 +14575,17 @@
                         "out": "nn::omm::detail::ICradleFirmwareUpdater"
                     },
                     "29": "GetCradleStatusChangeEvent",
-                    "40": "Cmd40",
-                    "41": "Cmd41",
-                    "50": "Cmd50",
+                    "30": "GetOperationModePolicy",
+                    "40": "GetAudioMode",
+                    "41": "SetAudioMode",
+                    "50": "GetDisplayResolution",
                     "300": "Cmd300",
                     "301": "Cmd301",
                     "500": "LblSwitchBacklightOnForAm",
                     "501": "LblSwitchBacklightOffForAm",
-                    "502": "Cmd502",
-                    "503": "Cmd503",
-                    "504": "Cmd504",
+                    "502": "SignalOmmEvent",
+                    "503": "SignalOmmEventAlt",
+                    "504": "GetOmmEvent",
                     "900": "HideStartupLogo"
                 }
             },
@@ -14432,9 +14599,25 @@
                     "5": "GetUpdateProgress2"
                 }
             },
-            "IHipcManager": {
-                "nn::sf::hipc::detail::IHipcManager": {
-                    "_ref": "Framework"
+            "spsm": {
+                "nn::spsm::detail::IPowerStateInterface": {
+                    "0": "GetCurrentState",
+                    "1": "EnterSleep",
+                    "2": "GetLastWakeReason",
+                    "3": "Shutdown",
+                    "4": "GetNotificationMessageEventHandle",
+                    "5": "ReceiveNotificationMessage",
+                    "6": "AnalyzeLogForLastSleepWakeSequence",
+                    "7": "ResetEventLog",
+                    "8": "AnalyzePerformanceLogForLastSleepWakeSequence",
+                    "9": "ChangeHomeButtonLongPressingTime",
+                    "10": "PutErrorState",
+                    "11": "InvalidateCurrentHomeButtonPressing",
+                    "12": "EmulatePowerButtonPressedBriefly",
+                    "13": "EmulatePowerButtonPressedFor7Sec",
+                    "14": "SetAlwaysRebootFlag",
+                    "15": "SetWakeReasonOverride",
+                    "16": "SetWakeupAlarm"
                 }
             }
         },
@@ -14513,16 +14696,56 @@
                     "5": "Mask2"
                 }
             },
-            "ngc:t": {
+            "ngct:u": {
                 "nn::ngc::t::detail::IService": {
-                    "0": "Cmd0",
-                    "1": "Cmd1"
-
+                    "0": "Match",
+                    "1": "Filter"
                 }
             },
             "IHipcManager": {
                 "nn::sf::hipc::detail::IHipcManager": {
                     "_ref": "Framework"
+                }
+            },
+            "stpl:u": {
+                "nn::streamplay::IUserService": {
+                    "0": {
+                        "name": "Cmd0",
+                        "out": "nn::streamplay::IUserShimScopedObject"
+                    }
+                }
+            },
+            "IUserShimScopedObject": {
+                "nn::streamplay::IUserShimScopedObject": {
+                    "450": "InitializeForSaveData",
+                    "451": "FinalizeForSaveData",
+                    "452": "OpenSaveData",
+                    "453": "CloseSaveData",
+                    "454": "ReadSaveSlot",
+                    "455": "WriteSaveSlot",
+                    "456": "FlushSaveSlot",
+                    "457": "CommitSaveData"
+                }
+            },
+            "stpl:sys": {
+                "nn::streamplay::ISystemService": {
+                    "0": {
+                        "name": "Cmd0",
+                        "out": "nn::streamplay::ISystemShimScopedObject"
+                    }
+                }
+            },
+            "ISystemShimScopedObject": {
+                "nn::streamplay::ISystemShimScopedObject": {
+                    "106": "Cmd106",
+                    "107": "Cmd107",
+                    "108": "Cmd108",
+                    "207": "Cmd207",
+                    "208": "Cmd208",
+                    "209": "Cmd209",
+                    "210": "Cmd210",
+                    "211": "Cmd211",
+                    "212": "Cmd212"
                 }
             }
         }
