@@ -59,6 +59,8 @@ public class ServiceUsageTracer
         public final long decodeSite;
         public final String decodeInstruction;       // the exact instruction text, e.g. "mov w4,#0x23"
         public final TreeSet<Long> callSites = new TreeSet<>();
+        /** True when the command is proven only by its vtable stub (no typed call site was found). */
+        public boolean stubOnly;
 
         CommandProof(long command, long vtOffset, long stub, long decodeSite, String decodeInstruction)
         {
@@ -176,7 +178,7 @@ public class ServiceUsageTracer
             {
                 ServiceUsage u = decode(serviceName, vt.getOffset(), consumers);
                 if (!u.isEmpty())
-                    return u;
+                    return addStubProvenRootCommands(u);
             }
 
             // 2) RTTI fallback: SDK 22+ lazy-singleton/template proxies (prepo/applet/ngct/...) build the
@@ -195,9 +197,35 @@ public class ServiceUsageTracer
                     best = u;
             }
             if (best != null)
-                return best;
+                return addStubProvenRootCommands(best);
         }
         return null;
+    }
+
+    /**
+     * Stub-proven fallback. A root vtable slot whose stub decodes to a command id is proven to exist
+     * on the proxy even when no consumer has a typed {@code blr}/{@code br} on it (untyped object,
+     * consumer outside the caller closure, ...). Only applied once the vtable is confirmed as the
+     * service's proxy (the usage already has call-site-proven commands), so a mis-picked vtable can
+     * not flood the result, and AFTER vtable selection so it does not skew the "most resolved" choice.
+     * Such entries have no call sites and are flagged {@code stubOnly}.
+     */
+    private ServiceUsage addStubProvenRootCommands(ServiceUsage usage)
+    {
+        if (usage == null || usage.isEmpty())
+            return usage;
+        for (Map.Entry<Long, Slot> e : offToCmd(usage.rootVtable).entrySet())
+        {
+            if (isControl(e.getKey()))
+                continue;
+            Slot s = e.getValue();
+            if (usage.rootCommands.containsKey(s.cmd))
+                continue;
+            CommandProof proof = new CommandProof(s.cmd, e.getKey(), s.stub, s.decodeSite, s.decodeText);
+            proof.stubOnly = true;
+            usage.rootCommands.put(s.cmd, proof);
+        }
+        return usage;
     }
 
     /** Consumers of a service's proxy: callers of the connector + (lazy-singleton) referencers of the BSS
@@ -294,7 +322,12 @@ public class ServiceUsageTracer
                 continue;
             }
 
-            if (mn.equals("blr"))
+            // `blr` is a normal invoke; `br` on a loaded vtable method is a tail-call invoke
+            // (pass-through wrappers: ldr x8,[x8,#off]; br x8).
+            boolean isMethodBranch = mn.equals("br")
+                && regKind.get(reg(insn, 0)) != null
+                && "method".equals(regKind.get(reg(insn, 0))[0]);
+            if (mn.equals("blr") || isMethodBranch)
             {
                 Object[] k = regKind.get(reg(insn, 0));
                 if (k != null && "method".equals(k[0]))

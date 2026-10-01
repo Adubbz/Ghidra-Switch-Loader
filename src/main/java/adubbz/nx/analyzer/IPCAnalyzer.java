@@ -4950,8 +4950,9 @@ public class IPCAnalyzer extends AbstractAnalyzer
         {
             Address d = aSpace.getAddress(proof.decodeSite);
             this.tryCreateLabel(program, d, "cmdid_" + shortIface + "_" + cmd);
-            this.setCommentIfAbsent(program, d, CommentType.EOL, String.format("IPC cmd id %d -> %s%s",
-                cmd, iface != null ? iface : "?", name != null ? "::" + name : ""));
+            this.setCommentIfAbsent(program, d, CommentType.EOL, String.format("IPC cmd id %d -> %s%s%s",
+                cmd, iface != null ? iface : "?", name != null ? "::" + name : "",
+                proof.stubOnly ? " (stub-only: no typed call site found)" : ""));
         }
     }
 
@@ -5093,6 +5094,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 .append("\"cmd_proof_instruction\": \"").append(this.escapeJson(p.decodeInstruction)).append("\", ")
                 .append("\"cmd_hex_and_dec\": \"0x").append(Long.toHexString(p.command))
                     .append(" / ").append(p.command).append("\", ")
+                .append(p.stubOnly ? "\"stub_only\": true, " : "")
                 .append("\"calls\": ").append(this.formatHexAddressArray(p.callSites))
                 .append(" }");
             wrote = true;
