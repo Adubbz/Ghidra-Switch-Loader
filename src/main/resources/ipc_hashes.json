@@ -3,7 +3,8 @@
         "Filesystem_services": {
             "fsp-srv": {
                 "nn::fssrv::sf::IFileSystemProxy": {
-                    "_hash": "1d0a74ad4b163e4d"
+                    "_hash": "72c923b8bea83cf3",
+                    "_hash_2200": "1d0a74ad4b163e4d"
                 }
             },
             "IFileSystem": {
@@ -91,6 +92,11 @@
                     "_hash": "38a0e75d3464cecb"
                 }
             },
+            "IStorageForBatchRead": {
+                "nn::fssrv::sf::IStorageForBatchRead": {
+                    "_hash": "0054bcd195dc11f0"
+                }
+            },
             "IDeviceOperator": {
                 "nn::fssrv::sf::IDeviceOperator": {
                     "_hash": "dd858be81a665d91"
@@ -135,7 +141,8 @@
         "Loader_services": {
             "ldr:pm": {
                 "nn::ldr::detail::IProcessManagerInterface": {
-                    "_hash": "034e6820214e196d"
+                    "_hash": "c9f593a4b02c83d1",
+                    "_hash_2200": "034e6820214e196d"
                 }
             },
             "ldr:shel": {
@@ -407,8 +414,10 @@
         "Settings_services": {
             "set": {
                 "nn::settings::ISettingsServer": {
-                    "_hash": "8d1c9f764839c053",
-                    "_hash_alt": "5a50e638bde82f9d"
+                    "_hash": "3ec5e0ec56549d08",
+                    "_hash_alt": "fa66aa0c2c866a91",
+                    "_hash_2200": "8d1c9f764839c053",
+                    "_hash_alt_2200": "5a50e638bde82f9d"
                 }
             },
             "set:cal": {
@@ -429,7 +438,8 @@
             },
             "set:sys": {
                 "nn::settings::ISystemSettingsServer": {
-                    "_hash": "c3405f55b2374cf5"
+                    "_hash": "5bc50084f7596852",
+                    "_hash_2200": "c3405f55b2374cf5"
                 }
             },
             "IHipcManager": {
@@ -461,7 +471,8 @@
             },
             "IPadSession": {
                 "nn::gpio::IPadSession": {
-                    "_hash": "656cda70375d5531"
+                    "_hash": "6d24cc7de149e88b",
+                    "_hash_2200": "656cda70375d5531"
                 }
             },
             "i2c, i2c:pcv": {
@@ -471,8 +482,10 @@
             },
             "II2cSession": {
                 "nn::i2c::ISession": {
-                    "_hash": "a09e4f8e00d4e789",
-                    "_hash_alt": "d14d20c3da4df46b"
+                    "_hash": "e24e06ae4d8726cc",
+                    "_hash_alt": "9200a4cc01a871f9",
+                    "_hash_2200": "a09e4f8e00d4e789",
+                    "_hash_alt_2200": "d14d20c3da4df46b"
                 }
             },
             "led": {
@@ -604,7 +617,8 @@
             },
             "INewsService": {
                 "nn::news::detail::ipc::INewsService": {
-                    "_hash": "e4cfd637e2db6ea6"
+                    "_hash": "5753d30318624f1d",
+                    "_hash_2200": "e4cfd637e2db6ea6"
                 }
             },
             "IDownloadContext": {
@@ -640,6 +654,11 @@
             "IAsyncContext": {
                 "nn::prepo::detail::ipc::IAsyncContext": {
                     "_hash": "6678150a46c02966"
+                }
+            },
+            "IBackgroundTaskSuspensionService": {
+                "nn::news::detail::ipc::IBackgroundTaskSuspensionService": {
+                    "_hash": "e75f6a0a19f5fa67"
                 }
             }
         },
@@ -685,7 +704,8 @@
             },
             "IScanRequest": {
                 "nn::nifm::detail::IScanRequest": {
-                    "_hash": "ab773463a4e2c3ae"
+                    "_hash": "85cc5353d071b90b",
+                    "_hash_2200": "ab773463a4e2c3ae"
                 }
             },
             "IRequest": {
@@ -742,17 +762,20 @@
             },
             "psm": {
                 "nn::psm::IPsmServer": {
-                    "_hash": "452daed2dc69bd77"
+                    "_hash": "c0c8ae04e6157ebf",
+                    "_hash_2200": "452daed2dc69bd77"
                 }
             },
             "IPsmSession": {
                 "nn::psm::IPsmSession": {
-                    "_hash": "b942d1910cdacf8a"
+                    "_hash": "f9d623ca150f7cb1",
+                    "_hash_2200": "b942d1910cdacf8a"
                 }
             },
             "tc": {
                 "nn::tc::IManager": {
-                    "_hash": "71bb46edde28fec6"
+                    "_hash": "1f20dcbed2185ec2",
+                    "_hash_2200": "71bb46edde28fec6"
                 }
             },
             "ts": {
@@ -784,8 +807,10 @@
             },
             "bsd:u, bsd:s, bsd:a": {
                 "nn::socket::sf::IClient": {
-                    "_hash": "4a3da343df6b2558",
-                    "_hash_alt": "ee0acbe3a330f236"
+                    "_hash": "19a3c8eef59dec13",
+                    "_hash_alt": "7b98211e1fae98c8",
+                    "_hash_2200": "4a3da343df6b2558",
+                    "_hash_alt_2200": "ee0acbe3a330f236"
                 }
             },
             "bsdcfg, ifcfg": {
@@ -795,8 +820,10 @@
             },
             "sfdnsres": {
                 "nn::socket::resolver::IResolver": {
-                    "_hash": "5a0d56d52dff4251",
-                    "_hash_alt": "1fe8ba23af9b8f4c"
+                    "_hash": "d557b6d22bda65d8",
+                    "_hash_alt": "5fd94b94ad5d7688",
+                    "_hash_2200": "5a0d56d52dff4251",
+                    "_hash_alt_2200": "1fe8ba23af9b8f4c"
                 }
             },
             "dns:priv": {
@@ -823,8 +850,10 @@
             },
             "hid": {
                 "nn::hid::IHidServer": {
-                    "_hash": "0d9dc9f6dec24514",
-                    "_hash_alt": "cfe51e263f5c8dbe"
+                    "_hash": "0bbc3132c9c8c0ab",
+                    "_hash_alt": "61310b4e04857c60",
+                    "_hash_2200": "0d9dc9f6dec24514",
+                    "_hash_alt_2200": "cfe51e263f5c8dbe"
                 }
             },
             "IAppletResource": {
@@ -839,8 +868,10 @@
             },
             "hid:sys": {
                 "nn::hid::IHidSystemServer": {
-                    "_hash": "54c11f8be7634b66",
-                    "_hash_alt": "2f04e086093bd0e9"
+                    "_hash": "8ccbf4dcd6ed9015",
+                    "_hash_alt": "80a8b5be2ca32335",
+                    "_hash_2200": "54c11f8be7634b66",
+                    "_hash_alt_2200": "2f04e086093bd0e9"
                 }
             },
             "IHidbusSystemServer": {
@@ -850,8 +881,10 @@
             },
             "hid:dbg": {
                 "nn::hid::IHidDebugServer": {
-                    "_hash": "66b3d20557431fa0",
-                    "_hash_alt": "2b7764c19cecde93"
+                    "_hash": "e20170db0ebd5c28",
+                    "_hash_alt": "4bd33a832a8ab8e9",
+                    "_hash_2200": "66b3d20557431fa0",
+                    "_hash_alt_2200": "2b7764c19cecde93"
                 }
             },
             "irs": {
@@ -866,8 +899,10 @@
             },
             "hidbus": {
                 "nn::hidbus::IHidbusServer": {
-                    "_hash": "6243be4ea4d4448b",
-                    "_hash_alt": "ea9afec96e1477f2"
+                    "_hash": "5565d3b32d6c0356",
+                    "_hash_alt": "65f6354580629539",
+                    "_hash_2200": "6243be4ea4d4448b",
+                    "_hash_alt_2200": "ea9afec96e1477f2"
                 }
             },
             "xcd:sys": {
@@ -909,8 +944,10 @@
             },
             "IAudioRenderer": {
                 "nn::audio::detail::IAudioRenderer": {
-                    "_hash": "42fb62f927eab0a0",
-                    "_hash_alt": "38c8c78da0f97f0b"
+                    "_hash": "90637b9fbdf64d0b",
+                    "_hash_alt": "93e54f257c56085d",
+                    "_hash_2200": "42fb62f927eab0a0",
+                    "_hash_alt_2200": "38c8c78da0f97f0b"
                 }
             },
             "IAudioDevice": {
@@ -983,7 +1020,8 @@
             },
             "ISharedMemoryAccessor": {
                 "nn::lm::ISharedMemoryAccessor": {
-                    "_hash": ""
+                    "_hash": "1183f0d34f30f574",
+                    "_hash_2200": ""
                 }
             }
         },
@@ -1000,8 +1038,10 @@
             },
             "IWirelessCommunicationService": {
                 "nn::wlan::detail::IWirelessCommunicationService": {
-                    "_hash": "3adb3d881e11043d",
-                    "_hash_alt": "6b963fdc6943c90b"
+                    "_hash": "2bc3a29575831497",
+                    "_hash_alt": "39fe825e6292c571",
+                    "_hash_2200": "3adb3d881e11043d",
+                    "_hash_alt_2200": "6b963fdc6943c90b"
                 }
             },
             "wlan:p": {
@@ -1269,8 +1309,10 @@
             },
             "IAdministrator": {
                 "nn::account::baas::IAdministrator": {
-                    "_hash": "787524cef962d026",
-                    "_hash_alt": "42e75dc40aa9d9ae"
+                    "_hash": "7a308d5750a3f0be",
+                    "_hash_alt": "e2b8b34cfe41900c",
+                    "_hash_2200": "787524cef962d026",
+                    "_hash_alt_2200": "42e75dc40aa9d9ae"
                 }
             },
             "IOAuthProcedureForNintendoAccountLinkage": {
@@ -1343,8 +1385,10 @@
             },
             "IManagerForSystemService": {
                 "nn::account::baas::IManagerForSystemService": {
-                    "_hash": "32091588c1a86d02",
-                    "_hash_alt": "d37ddb20388f551e"
+                    "_hash": "3685503b5ac3d1cc",
+                    "_hash_alt": "32a55333b143f413",
+                    "_hash_2200": "32091588c1a86d02",
+                    "_hash_alt_2200": "d37ddb20388f551e"
                 }
             },
             "IProfile": {
@@ -1412,6 +1456,11 @@
                 "nn::dauth::detail::IAsyncResult": {
                     "_hash": "7ace7c7085f89876"
                 }
+            },
+            "UnnamedInterface": {
+                "nn::account::nas::UnnamedInterface": {
+                    "_hash": "c782d9c486c2c93e"
+                }
             }
         },
         "NS_services": {
@@ -1463,7 +1512,8 @@
             "ns:vm": {
                 "nn::ns::detail::IVulnerabilityManagerInterface": {
                     "_hash_2200": "14d7453ab255cc6e",
-                    "_hash_2100": "cbac23b47acc6139"
+                    "_hash_2100": "cbac23b47acc6139",
+                    "_hash": "14d7453ab255cc6e"
                 }
             },
             "IAsyncResult2": {
@@ -1493,7 +1543,8 @@
             },
             "IReadOnlyApplicationControlDataInterface": {
                 "nn::ns::detail::IReadOnlyApplicationControlDataInterface": {
-                    "_hash": "95d9cdea083a6b81"
+                    "_hash": "ad7980a2ce0a506f",
+                    "_hash_2200": "95d9cdea083a6b81"
                 }
             },
             "IReadOnlyApplicationRecordInterface": {
@@ -1508,7 +1559,8 @@
             },
             "IApplicationVersionInterface": {
                 "nn::ns::detail::IApplicationVersionInterface": {
-                    "_hash": "7bbb71d2a80fdf00"
+                    "_hash": "a4d0d521f44fc419",
+                    "_hash_2200": "7bbb71d2a80fdf00"
                 }
             },
             "IFactoryResetInterface": {
@@ -1528,7 +1580,8 @@
             },
             "IApplicationManagerInterface": {
                 "nn::ns::detail::IApplicationManagerInterface": {
-                    "_hash": "c4bf8d9236b902ee"
+                    "_hash": "062945311d0550af",
+                    "_hash_2200": "c4bf8d9236b902ee"
                 }
             },
             "IProgressMonitorForDeleteUserSaveDataAll": {
@@ -1558,7 +1611,8 @@
             },
             "IDownloadTaskInterface": {
                 "nn::ns::detail::IDownloadTaskInterface": {
-                    "_hash": "e2a8ec95876fd267"
+                    "_hash": "ad6d5b6b5c6b318c",
+                    "_hash_2200": "e2a8ec95876fd267"
                 }
             },
             "IContentManagementInterface": {
@@ -1573,7 +1627,8 @@
             },
             "ns:dev": {
                 "nn::ns::detail::IDevelopInterface": {
-                    "_hash": "6ca290265aaec9f9"
+                    "_hash": "7a2ce672ce124e42",
+                    "_hash_2200": "6ca290265aaec9f9"
                 }
             },
             "acc:su": {
@@ -1601,8 +1656,10 @@
             },
             "IAdministrator": {
                 "nn::account::baas::IAdministrator": {
-                    "_hash": "787524cef962d026",
-                    "_hash_alt": "42e75dc40aa9d9ae"
+                    "_hash": "7a308d5750a3f0be",
+                    "_hash_alt": "e2b8b34cfe41900c",
+                    "_hash_2200": "787524cef962d026",
+                    "_hash_alt_2200": "42e75dc40aa9d9ae"
                 }
             },
             "IOAuthProcedureForNintendoAccountLinkage": {
@@ -1659,8 +1716,10 @@
             },
             "IDeviceMigrationUserImportRequest": {
                 "nn::account::migration::IDeviceMigrationUserImportRequest": {
-                    "_hash": "a9c975233fc0702f",
-                    "_hash_alt": "be11ba847ee51639"
+                    "_hash": "ce5b2de855547bbc",
+                    "_hash_alt": "1017de30d8bcf861",
+                    "_hash_2200": "a9c975233fc0702f",
+                    "_hash_alt_2200": "be11ba847ee51639"
                 }
             },
             "IProfileEditor": {
@@ -1675,8 +1734,10 @@
             },
             "IManagerForSystemService": {
                 "nn::account::baas::IManagerForSystemService": {
-                    "_hash": "32091588c1a86d02",
-                    "_hash_alt": "d37ddb20388f551e"
+                    "_hash": "3685503b5ac3d1cc",
+                    "_hash_alt": "32a55333b143f413",
+                    "_hash_2200": "32091588c1a86d02",
+                    "_hash_alt_2200": "d37ddb20388f551e"
                 }
             },
             "IProfile": {
@@ -1711,6 +1772,21 @@
                     "_hash": "ffccb1f01e1acaa5",
                     "_hash_alt": "5491f87c7e6abfe6"
                 }
+            },
+            "IAsyncResult@0x7100178634": {
+                "nn::ns::detail::IAsyncResult@0x7100178634": {
+                    "_hash": "1e1b4340508e40b2"
+                }
+            },
+            "IAsyncValue@0x710017c834": {
+                "nn::ns::detail::IAsyncValue@0x710017c834": {
+                    "_hash": "1ad2f46192c3e69c"
+                }
+            },
+            "UnnamedInterface": {
+                "nn::account::nas::UnnamedInterface": {
+                    "_hash": "c782d9c486c2c93e"
+                }
             }
         },
         "NFC_services": {
@@ -1743,8 +1819,10 @@
             },
             "IUserNfp": {
                 "nn::nfp::detail::IUser": {
-                    "_hash": "049989080b261cc6",
-                    "_hash_alt": "4d95e7321e85354f"
+                    "_hash": "c0fdaeac99fd6c62",
+                    "_hash_alt": "be20e9b102df5cc3",
+                    "_hash_2200": "049989080b261cc6",
+                    "_hash_alt_2200": "4d95e7321e85354f"
                 }
             },
             "nfp:sys": {
@@ -1754,8 +1832,10 @@
             },
             "ISystemNfp": {
                 "nn::nfp::detail::ISystem": {
-                    "_hash": "249eeeb461b88ef2",
-                    "_hash_alt": "a250964c3a7adab1"
+                    "_hash": "d5f30862d7056905",
+                    "_hash_alt": "504e2bd55e10d488",
+                    "_hash_2200": "249eeeb461b88ef2",
+                    "_hash_alt_2200": "a250964c3a7adab1"
                 }
             },
             "nfp:dbg": {
@@ -1765,8 +1845,10 @@
             },
             "IDebug": {
                 "nn::nfp::detail::IDebug": {
-                    "_hash": "2a3c5a046da5de65",
-                    "_hash_alt": "27f25399aa6b01eb"
+                    "_hash": "f0de5cec5fb031df",
+                    "_hash_alt": "99b5429909b7682f",
+                    "_hash_2200": "2a3c5a046da5de65",
+                    "_hash_alt_2200": "27f25399aa6b01eb"
                 }
             },
             "nfc:am": {
@@ -1824,7 +1906,8 @@
             },
             "hshl:sys": {
                 "nn::hshl::IManager": {
-                    "_hash": "5d5f267e0a28315f"
+                    "_hash": "8f270ed3b5dcae9c",
+                    "_hash_2200": "5d5f267e0a28315f"
                 }
             },
             "IChargeSession": {
@@ -1854,17 +1937,20 @@
             },
             "hshl:set": {
                 "nn::hshl::ISetterManager": {
-                    "_hash": "079aa4a0e44f7f6a"
+                    "_hash": "bddf6bdf8db7b355",
+                    "_hash_2200": "079aa4a0e44f7f6a"
                 }
             },
             "IChargeSetterSession": {
                 "nn::hshl::IChargeSetterSession": {
-                    "_hash": "08c90a0189a7998a"
+                    "_hash": "a4b2afbf44c253b4",
+                    "_hash_2200": "08c90a0189a7998a"
                 }
             },
             "IThermalSetterSession": {
                 "nn::hshl::IThermalSetterSession": {
-                    "_hash": "de50b78b3b860d4f"
+                    "_hash": "96a5e651c106c4cd",
+                    "_hash_2200": "de50b78b3b860d4f"
                 }
             },
             "ins:r": {
@@ -1899,8 +1985,10 @@
             },
             "srepo:u, srepo:a": {
                 "nn::srepo::detail::ipc::ISrepoService": {
-                    "_hash": "0bead421156cc491",
-                    "_hash_alt": "e5ef395dd9631bfe"
+                    "_hash": "5f0beeebc02952ba",
+                    "_hash_alt": "7a03cb6b05dd4bf3",
+                    "_hash_2200": "0bead421156cc491",
+                    "_hash_alt_2200": "e5ef395dd9631bfe"
                 }
             },
             "IAsyncContext": {
@@ -1973,7 +2061,8 @@
             },
             "caps:a": {
                 "nn::capsrv::sf::IAlbumAccessorService": {
-                    "_hash": "57db3aedea29d970"
+                    "_hash": "9b47729de5881367",
+                    "_hash_2200": "57db3aedea29d970"
                 }
             },
             "IAlbumAccessorSession": {
@@ -2077,7 +2166,8 @@
             },
             "ICommonStateGetter": {
                 "nn::am::service::ICommonStateGetter": {
-                    "_hash": "1e788fdb1cc79495"
+                    "_hash": "4b7d4fc9006137ee",
+                    "_hash_2200": "1e788fdb1cc79495"
                 }
             },
             "ILockAccessor": {
@@ -2092,7 +2182,8 @@
             },
             "ISelfController": {
                 "nn::am::service::ISelfController": {
-                    "_hash": "fac7bd398ebd5bed"
+                    "_hash": "5136a33fcf575b5d",
+                    "_hash_2200": "fac7bd398ebd5bed"
                 }
             },
             "IStorageChannel": {
@@ -2117,8 +2208,10 @@
             },
             "IDebugFunctions": {
                 "nn::am::service::IDebugFunctions": {
-                    "_hash": "9412b2fe564eb922",
-                    "_hash_alt": "f8022fda5cfd0003"
+                    "_hash": "8967fcaab2f182cc",
+                    "_hash_alt": "115ee03b07916ccf",
+                    "_hash_2200": "9412b2fe564eb922",
+                    "_hash_alt_2200": "f8022fda5cfd0003"
                 }
             },
             "appletAE": {
@@ -2138,7 +2231,8 @@
             },
             "IGlobalStateController": {
                 "nn::am::service::IGlobalStateController": {
-                    "_hash": "cd140d5acedba604"
+                    "_hash": "4601e6fa4cd2d7de",
+                    "_hash_2200": "cd140d5acedba604"
                 }
             },
             "ICradleFirmwareUpdater": {
@@ -2153,13 +2247,16 @@
             },
             "IApplicationAccessor": {
                 "nn::am::service::IApplicationAccessor": {
-                    "_hash": "240d655c379372cd"
+                    "_hash": "9a6734f91108a7af",
+                    "_hash_2200": "240d655c379372cd"
                 }
             },
             "IAppletCommonFunctions": {
                 "nn::am::service::IAppletCommonFunctions": {
-                    "_hash": "9a5cfa9ca4436ff1",
-                    "_hash_alt": "53c7eeda539d0a7d"
+                    "_hash": "d20cfb4847f6212f",
+                    "_hash_alt": "aabd9f0ed6d6b9e5",
+                    "_hash_2200": "9a5cfa9ca4436ff1",
+                    "_hash_alt_2200": "53c7eeda539d0a7d"
                 }
             },
             "IReceiverService": {
@@ -2266,7 +2363,8 @@
             },
             "ssl:s": {
                 "nn::ssl::sf::ISslServiceForSystem": {
-                    "_hash": "bd31a052d1645aee"
+                    "_hash": "57dda869fc0e99e7",
+                    "_hash_2200": "bd31a052d1645aee"
                 }
             },
             "ISslContextForSystem": {
@@ -2283,7 +2381,8 @@
             },
             "nim:shp": {
                 "nn::nim::detail::IShopServiceManager": {
-                    "_hash": "6c3d2e8a0901f40e"
+                    "_hash": "e27625c693aa721e",
+                    "_hash_2200": "6c3d2e8a0901f40e"
                 }
             },
             "IAsyncValue": {
@@ -2328,12 +2427,14 @@
             },
             "nim": {
                 "nn::nim::detail::INetworkInstallManager": {
-                    "_hash": "ccb6d16a6bd172ec"
+                    "_hash": "536089693efc7a88",
+                    "_hash_2200": "ccb6d16a6bd172ec"
                 }
             },
             "IAsyncData": {
                 "nn::nim::detail::IAsyncData": {
-                    "_hash": "e35336d835f666fb"
+                    "_hash": "f361d41b86017b00",
+                    "_hash_2200": "e35336d835f666fb"
                 }
             },
             "ntc": {
@@ -2361,8 +2462,10 @@
             },
             "IBtmSystemCore": {
                 "nn::btm::IBtmSystemCore": {
-                    "_hash": "fabb20c27c92ba10",
-                    "_hash_alt": "b9c24d6146905222"
+                    "_hash": "37c2e7113b095419",
+                    "_hash_alt": "a2bdabdb3f3d6d24",
+                    "_hash_2200": "fabb20c27c92ba10",
+                    "_hash_alt_2200": "b9c24d6146905222"
                 }
             },
             "btm:u": {
@@ -2406,7 +2509,8 @@
             },
             "IManager": {
                 "nn::erpt::sf::IManager": {
-                    "_hash": "f1adf99e98ecd9a3"
+                    "_hash": "2e71250d30638fe8",
+                    "_hash_2200": "f1adf99e98ecd9a3"
                 }
             },
             "IAttachment": {
@@ -2431,7 +2535,8 @@
             },
             "IProfileReader": {
                 "nn::sprofile::srv::IProfileReader": {
-                    "_hash": "a3ee550d1d55baf5"
+                    "_hash": "6e4b15ad39d70541",
+                    "_hash_2200": "a3ee550d1d55baf5"
                 }
             },
             "IProfileUpdateObserver": {
@@ -2441,17 +2546,25 @@
             },
             "IProfileControllerForDebug": {
                 "nn::sprofile::srv::IProfileControllerForDebug": {
-                    "_hash": "3c1c98566e42344a"
+                    "_hash": "1d211048b9bf868c",
+                    "_hash_2200": "3c1c98566e42344a"
                 }
             },
             "ISprofileServiceForBgAgent": {
                 "nn::sprofile::srv::ISprofileServiceForBgAgent": {
-                    "_hash": "62f2f18d7b34576f"
+                    "_hash": "4c6380c8a9ec1243",
+                    "_hash_2200": "62f2f18d7b34576f"
                 }
             },
             "IProfileImporter": {
                 "nn::sprofile::srv::IProfileImporter": {
-                    "_hash": "8bae7807d1c64e3b"
+                    "_hash": "2211559b60f2fe16",
+                    "_hash_2200": "8bae7807d1c64e3b"
+                }
+            },
+            "IContext": {
+                "nn::erpt::ipc::IContext": {
+                    "_hash": "86f3195817f830e1"
                 }
             }
         },
@@ -2504,7 +2617,8 @@
             },
             "IDp2hdmiController": {
                 "nn::dp2hdmi::detail::IDp2hdmiController": {
-                    "_hash": "ea1df21a79ab4c08"
+                    "_hash": "f12bc1ef9b804685",
+                    "_hash_2200": "ea1df21a79ab4c08"
                 }
             },
             "IManagerDisplayService": {
@@ -2541,8 +2655,10 @@
             },
             "IParentalControlService": {
                 "nn::pctl::detail::ipc::IParentalControlService": {
-                    "_hash": "511fd65cf0b01514",
-                    "_hash_alt": "426303085271eccf"
+                    "_hash": "facf24a415e87ae6",
+                    "_hash_alt": "13be36437fc662ae",
+                    "_hash_2200": "511fd65cf0b01514",
+                    "_hash_alt_2200": "426303085271eccf"
                 }
             },
             "IHipcManager": {
@@ -2601,7 +2717,9 @@
             },
             "npns:s2": {
                 "nn::npns::INpnsSystem2": {
-                    "_hash": ""
+                    "_hash": "0e8adf71a4eac413",
+                    "_hash_2200": "",
+                    "_hash_alt": "c42a5965b167313e"
                 }
             }
         },
@@ -2618,7 +2736,8 @@
             },
             "eupld:c": {
                 "nn::eupld::sf::IControl": {
-                    "_hash": "037a554cfdba19b2"
+                    "_hash": "6b2374d7f73d6488",
+                    "_hash_2200": "037a554cfdba19b2"
                 }
             }
         },
@@ -2743,7 +2862,8 @@
             },
             "IRightsIdInterface": {
                 "nn::es::RightsIdInterface": {
-                    "_hash": ""
+                    "_hash": "022dc075462b03b5",
+                    "_hash_2200": ""
                 }
             },
             "IAsyncValue": {
@@ -2916,7 +3036,8 @@
             },
             "mig:usr": {
                 "nn::migration::user::IService": {
-                    "_hash": "f43a859c978a5dcc"
+                    "_hash": "5dee487d3ecd218e",
+                    "_hash_2200": "f43a859c978a5dcc"
                 }
             },
             "IServerUser": {
@@ -2936,17 +3057,20 @@
             },
             "IServerSave": {
                 "nn::migration::savedata::IServer": {
-                    "_hash": "619e77245bc02a93"
+                    "_hash": "f72f7284f671db85",
+                    "_hash_2200": "619e77245bc02a93"
                 }
             },
             "IClientSave": {
                 "nn::migration::savedata::IClient": {
-                    "_hash": "db51360269f32938"
+                    "_hash": "5519ae58d5a2a2ec",
+                    "_hash_2200": "db51360269f32938"
                 }
             },
             "IServerDevice": {
                 "nn::migration::device::IServer": {
-                    "_hash": "3d049fb0ce1945c7"
+                    "_hash": "8b84696856e21313",
+                    "_hash_2200": "3d049fb0ce1945c7"
                 }
             },
             "IClientDevice": {
@@ -2956,7 +3080,8 @@
             },
             "IUnknownDevice": {
                 "nn::migration::device:IUnknown": {
-                    "_hash": ""
+                    "_hash": "4dfed814732e07aa",
+                    "_hash_2200": ""
                 }
             },
             "IUploaderDevice": {
@@ -3012,7 +3137,8 @@
             },
             "IOlscServiceForSystemService": {
                 "nn::olsc::srv::IOlscServiceForSystemService": {
-                    "_hash": "6b76ae1d5a465e98"
+                    "_hash": "39be873a1720d1f7",
+                    "_hash_2200": "6b76ae1d5a465e98"
                 }
             },
             "IAsyncResult": {
@@ -3037,7 +3163,8 @@
             },
             "IAsyncPlayablePlatformRequest": {
                 "nn::olsc::srv::IAsyncPlayablePlatformRequest": {
-                    "_hash": "93369b134785f547"
+                    "_hash": "f4726b2e301badf6",
+                    "_hash_2200": "93369b134785f547"
                 }
             },
             "IDaemonController": {
@@ -3084,6 +3211,11 @@
                 "nn::sprofile::srv::IBgAgentContoller": {
                     "_hash": "b283a428c833fef6"
                 }
+            },
+            "IAsyncDataTransferPolicyRequest@0x71001288e0": {
+                "nn::olsc::srv::IAsyncDataTransferPolicyRequest@0x71001288e0": {
+                    "_hash": "f700807cfe62825d"
+                }
             }
         },
         "PGL_services": {
@@ -3099,11 +3231,6 @@
             }
         },
         "OMM_services": {
-            "spsm": {
-                "nn::spsm::detail::IPowerStateInterface": {
-                    "_hash": "37e8d2fd17be2b18"
-                }
-            },
             "ommdisp": {
                 "nn::omm::srv::IDisplayLayerControl": {
                     "_hash": "73b06047d85d1967"
@@ -3111,12 +3238,19 @@
             },
             "idle:sys": {
                 "nn::idle::detail::IPolicyManagerSystem": {
-                    "_hash": "be389407a7b948a6"
+                    "_hash": "a0111eca0240c710",
+                    "_hash_2200": "be389407a7b948a6"
+                }
+            },
+            "IHipcManager": {
+                "nn::sf::hipc::detail::IHipcManager": {
+                    "_hash": "110f14166ba3f72c"
                 }
             },
             "omm": {
                 "nn::omm::detail::IOperationModeManager": {
-                    "_hash": "038fb1eb7eaf0e81"
+                    "_hash": "ed1a48d86bf086ca",
+                    "_hash_2200": "038fb1eb7eaf0e81"
                 }
             },
             "ICradleFirmwareUpdater": {
@@ -3124,9 +3258,9 @@
                     "_hash": "ccd8b1449076168d"
                 }
             },
-            "IHipcManager": {
-                "nn::sf::hipc::detail::IHipcManager": {
-                    "_hash": "110f14166ba3f72c"
+            "spsm": {
+                "nn::spsm::detail::IPowerStateInterface": {
+                    "_hash": "37e8d2fd17be2b18"
                 }
             }
         },
@@ -3169,6 +3303,28 @@
             "IHipcManager": {
                 "nn::sf::hipc::detail::IHipcManager": {
                     "_hash": "110f14166ba3f72c"
+                }
+            },
+            "IUserShimScopedObject": {
+                "nn::streamplay::IUserShimScopedObject": {
+                    "_hash": "420845571c925754",
+                    "_hash_alt": "9257f1771bceb0d9"
+                }
+            },
+            "stpl:sys": {
+                "nn::streamplay::ISystemService": {
+                    "_hash": "ae38467756a410ed"
+                }
+            },
+            "ISystemShimScopedObject": {
+                "nn::streamplay::ISystemShimScopedObject": {
+                    "_hash": "2ec75fb1ec831e3c",
+                    "_hash_alt": "ad7a6310b151ba27"
+                }
+            },
+            "IUserService": {
+                "nn::streamplay::IUserService": {
+                    "_hash": "a81cc4d061fa9988"
                 }
             }
         }
