@@ -7,7 +7,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -51,6 +53,16 @@ public class ImportCrashReport extends GhidraScript {
     private static final Pattern RE_RA = Pattern.compile("^ReturnAddress\\[(\\d+)\\]:\\s+([0-9A-Fa-f]{8,16})\\b");
     private static final Pattern RE_ROW = Pattern.compile("^([0-9A-Fa-f]{8,16})((?:\\s+[0-9A-Fa-f]{2}){16})\\s*$");
 
+    /* Optional command-name database: see ImportFatalReport's class comment for the JSON shape and why only
+     * func/lr address matches are used, never a cmd-number-only guess. */
+    private static final Pattern RE_IFACE = Pattern.compile("^\"([A-Za-z_][\\w:<>, ]*)\"\\s*:\\s*\\{\\s*$");
+    private static final Pattern RE_CMDLINE = Pattern.compile("^\"(\\d+)\"\\s*:\\s*\\{(.*)\\}\\s*,?\\s*$");
+    private static final Pattern RE_FIELD_FUNC = Pattern.compile("\"func\"\\s*:\\s*\"0x([0-9A-Fa-f]+)\"");
+    private static final Pattern RE_FIELD_LR = Pattern.compile("\"lr\"\\s*:\\s*\"0x([0-9A-Fa-f]+)\"");
+    private static final Pattern RE_FIELD_NAME = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
+
+    private final Map<Long, String> dbByAddr = new HashMap<>();
+
     private enum Top { NONE, PROC, EXC, CRASHED, DYING, MODS, THREADS }
     private enum Sub { NONE, REGS, TRACE, STACK, TLS }
 
@@ -81,9 +93,11 @@ public class ImportCrashReport extends GhidraScript {
     private Sub sub = Sub.NONE;
     private Address imageBase;
     private long imageSize, modStart, modEnd;
+    private int pacWidth;
 
     @Override
     protected void run() throws Exception {
+        loadIpcDb();
         File f = askFile("Atmosphere crash report", "Import");
         List<String> lines = Files.readAllLines(f.toPath());
         if (!lines.isEmpty() && lines.get(0).contains("Fatal Report")) {
@@ -178,6 +192,12 @@ public class ImportCrashReport extends GhidraScript {
         modEnd = mod.end;
         imageBase = currentProgram.getImageBase();
         imageSize = currentProgram.getMemory().getMaxAddress().getOffset() - imageBase.getOffset() + 1;
+        /* ARMv8.3 pointer authentication: the stack walker and raw Stack Dump bytes carry
+         * signed return addresses (a signature packed into the unused upper VA bits); PC/LR/
+         * register values are already stripped by creport itself. Derive the module's VA width
+         * from its own end address (no hardcoded firmware/VA assumption) and use it as a
+         * fallback mask when a raw trace/stack-dump value doesn't land in the module as-is. */
+        pacWidth = 64 - Long.numberOfLeadingZeros(modEnd);
 
         println(String.format("Crash: %s pid=%s result=%s", proc, pid, result));
         println(String.format("  exception: %s %s", excType, excNotes));
@@ -214,14 +234,19 @@ public class ImportCrashReport extends GhidraScript {
                     pcAddr = a;
                     c += " | " + result + " " + proc;
                 }
+                String dbHit = dbByAddr.get(r.v);
+                if (dbHit != null) c += " | IPC: " + dbHit;
                 bookmark(a, cat + "/Register", c);
                 regs++;
             }
             int idx = 0;
             for (Ent r : th.trace) {
-                Address a = map(r.v, true);
+                StringBuilder pacNote = new StringBuilder();
+                Address a = resolveTraceAddr(r.v, pacNote);
                 if (a == null) { skipped++; idx++; continue; }
-                bookmark(a, cat + "/StackTrace", "ra[" + r.name + "]=0x" + Long.toHexString(r.v) + tn + " (call site: -4)");
+                String dbHit = dbByAddr.get(r.v);
+                bookmark(a, cat + "/StackTrace", "ra[" + r.name + "]=0x" + Long.toHexString(r.v) + tn + " (call site: -4)"
+                        + pacNote + (dbHit != null ? " | IPC: " + dbHit : ""));
                 trace++;
                 idx++;
                 Instruction i = currentProgram.getListing().getInstructionAt(a.subtract(4));
@@ -233,9 +258,10 @@ public class ImportCrashReport extends GhidraScript {
                     if (((th.stackBase + o) & 7) != 0) continue;
                     long v = u64(d, o);
                     if ((v & 3) != 0) continue;
-                    Address a = map(v, true);
+                    StringBuilder pacNote = new StringBuilder();
+                    Address a = resolveTraceAddr(v, pacNote);
                     if (a == null) continue;
-                    bookmark(a, cat + "/StackDump", String.format("stack+0x%x = 0x%x", o, v));
+                    bookmark(a, cat + "/StackDump", String.format("stack+0x%x = 0x%x%s", o, v, pacNote));
                     stack++;
                 }
             }
@@ -281,6 +307,48 @@ public class ImportCrashReport extends GhidraScript {
         default:
             break;
         }
+    }
+
+    /** Optional: load a cmd-name DB (see class comment above). Cancel/skip leaves both maps empty. */
+    private void loadIpcDb() {
+        File f;
+        try {
+            f = askFile("IPC command-name DB (optional; Cancel to skip)", "Load");
+        } catch (Exception e) {
+            return; // user cancelled
+        }
+        if (f == null) return;
+        try {
+            List<String> lines = Files.readAllLines(f.toPath());
+            String iface = null;
+            int addrs = 0;
+            for (String raw : lines) {
+                String t = raw.trim();
+                Matcher m;
+                if ((m = RE_IFACE.matcher(t)).find()) { iface = m.group(1); continue; }
+                if ((m = RE_CMDLINE.matcher(t)).find()) {
+                    int cmd = Integer.parseInt(m.group(1));
+                    String body = m.group(2);
+                    Matcher mn = RE_FIELD_NAME.matcher(body);
+                    if (!mn.find()) continue;
+                    String name = mn.group(1);
+                    if (name.equals("NOT_IN_DATABASE")) continue;
+                    String shortName = (iface == null ? "" : shortIface(iface) + "::") + name;
+                    Matcher mf = RE_FIELD_FUNC.matcher(body);
+                    if (mf.find()) { dbByAddr.put(Long.parseUnsignedLong(mf.group(1), 16), shortName + " (cmd " + cmd + ")"); addrs++; }
+                    Matcher ml = RE_FIELD_LR.matcher(body);
+                    if (ml.find()) { dbByAddr.put(Long.parseUnsignedLong(ml.group(1), 16), shortName + " (cmd " + cmd + ")"); addrs++; }
+                }
+            }
+            println(String.format("Loaded IPC DB: %d addresses (%s)", addrs, f.getName()));
+        } catch (Exception e) {
+            printerr("Failed to parse IPC DB, continuing without it: " + e.getMessage());
+        }
+    }
+
+    private static String shortIface(String full) {
+        int i = full.lastIndexOf("::");
+        return i < 0 ? full : full.substring(i + 2);
     }
 
     private static int u32(byte[] t, int o) {
@@ -394,10 +462,28 @@ public class ImportCrashReport extends GhidraScript {
         if (mg.equals("SFCI")) {
             d = "SFCI cmd=" + v;
             if (ctrl && v >= 0 && v < CMIF_CONTROL.length) d += "(" + CMIF_CONTROL[v] + ")";
+            /* Deliberately not annotated by cmd number alone: cmd IDs are per-interface and
+             * heavily reused (most interfaces have a cmd 0/1/2), so without an address match
+             * confirming which interface this session belongs to, a name here would misattribute
+             * more often than not. Only the func/lr address match below is trustworthy. */
         } else {
             d = "SFCO result=" + result(v);
         }
         return String.format("%s ver=%d token=0x%x @TLS+0x%x", d, ver, tok, o);
+    }
+
+    /** Like map(v, true), but retries with the PAC signature masked off if the raw value
+     * doesn't land in the selected module. Appends a note to `note` when the fallback was
+     * the one that hit, so the bookmark can show it was PAC-stripped. */
+    private Address resolveTraceAddr(long v, StringBuilder note) {
+        Address a = map(v, true);
+        if (a != null) return a;
+        if (pacWidth <= 0 || pacWidth >= 64) return null;
+        long masked = v & ((1L << pacWidth) - 1);
+        if (masked == v) return null;
+        Address a2 = map(masked, true);
+        if (a2 != null) note.append(String.format(" (PAC-stripped from raw 0x%x)", v));
+        return a2;
     }
 
     /** runtime address -> program address, or null if outside the selected module (or not code when requireExec). */
