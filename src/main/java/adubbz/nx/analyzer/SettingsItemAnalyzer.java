@@ -109,6 +109,8 @@ public class SettingsItemAnalyzer extends AbstractAnalyzer
 
     private record Candidate(String key, int dist, boolean regMatch) {}
 
+    private record DataPair(String key, Address start) {}
+
     /**
      * Marks every settings lookup whose name xref lies in {@code restrictTo} (null = whole program).
      * Safe to re-run: bookmarks are replaced, labels and comments are not duplicated.
@@ -150,19 +152,37 @@ public class SettingsItemAnalyzer extends AbstractAnalyzer
                         monitor.checkCancelled();
                         Address from = r.getFromAddress();
                         /* ldrb etc. reading the string's bytes is not a lookup argument. */
-                        if (r.getReferenceType().isRead() || (restrictTo != null && !restrictTo.contains(from)))
+                        if (r.getReferenceType().isRead())
                             continue;
 
-                        String key = this.resolveKey(from, name, str);
+                        String key;
+                        List<Address> sites;
+                        if (listing.getInstructionAt(from) != null)
+                        {
+                            if (restrictTo != null && !restrictTo.contains(from))
+                                continue;
+                            key = this.resolveKey(from, name, str);
+                            sites = List.of(from);
+                        }
+                        else
+                        {
+                            DataPair pair = this.resolveKeyFromData(from, name, str);
+                            key = pair == null ? null : pair.key;
+                            sites = pair == null ? List.of(from) : this.pairUseSites(pair, from, restrictTo);
+                        }
+
                         if (key == null)
                         {
                             result.unresolved.computeIfAbsent(name, k -> new ArrayList<>()).add(from);
                             continue;
                         }
 
-                        this.mark(from, name, key);
-                        result.keys.computeIfAbsent(name, k -> new TreeMap<>()).merge(key, 1, Integer::sum);
-                        result.marked++;
+                        for (Address site : sites)
+                        {
+                            this.mark(site, name, key);
+                            result.keys.computeIfAbsent(name, k -> new TreeMap<>()).merge(key, 1, Integer::sum);
+                            result.marked++;
+                        }
                     }
                 }
             }
@@ -221,8 +241,6 @@ public class SettingsItemAnalyzer extends AbstractAnalyzer
         private String resolveKey(Address from, String name, Address nameAddr)
         {
             Instruction insn = listing.getInstructionAt(from);
-            if (insn == null)
-                return this.resolveKeyFromData(from, name, nameAddr);
 
             /* { name, key } pair built on the stack: stp xN,xM,[sp,...] carries both refs. */
             String same = this.stringLoadedBy(insn, name, nameAddr);
@@ -256,7 +274,7 @@ public class SettingsItemAnalyzer extends AbstractAnalyzer
         }
 
         /* Pointer tables of { name, key } (or { key, name }) pairs. */
-        private String resolveKeyFromData(Address from, String name, Address nameAddr)
+        private DataPair resolveKeyFromData(Address from, String name, Address nameAddr)
         {
             Data d = listing.getDataContaining(from);
             if (d == null || !d.isPointer())
@@ -269,7 +287,7 @@ public class SettingsItemAnalyzer extends AbstractAnalyzer
                     Address p = from.getNewAddress(memory.getLong(from.add(off)));
                     String s = this.readKey(p, name, nameAddr);
                     if (s != null)
-                        return s;
+                        return new DataPair(s, off > 0 ? from : from.add(off));
                 }
                 catch (MemoryAccessException | AddressOutOfBoundsException e)
                 {
@@ -277,6 +295,29 @@ public class SettingsItemAnalyzer extends AbstractAnalyzer
                 }
             }
             return null;
+        }
+
+        /*
+         * The code that uses a { name, key } pair references the pair, not the name string, so mark
+         * those instructions. Only a pair nothing in code points at gets marked in place.
+         */
+        private List<Address> pairUseSites(DataPair pair, Address nameSlot, AddressSetView restrictTo)
+        {
+            boolean referenced = false;
+            Set<Address> sites = new TreeSet<>();
+            for (Address slot : new Address[] { pair.start, nameSlot })
+            {
+                for (Reference r : program.getReferenceManager().getReferencesTo(slot))
+                {
+                    Address from = r.getFromAddress();
+                    if (listing.getInstructionAt(from) == null)
+                        continue;
+                    referenced = true;
+                    if (restrictTo == null || restrictTo.contains(from))
+                        sites.add(from);
+                }
+            }
+            return referenced ? new ArrayList<>(sites) : List.of(nameSlot);
         }
 
         private static boolean isBarrier(Instruction insn, int dir)
