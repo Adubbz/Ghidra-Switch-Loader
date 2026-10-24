@@ -7,6 +7,7 @@
 package adubbz.nx.loader.nso0;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import adubbz.nx.common.InvalidMagicException;
 import adubbz.nx.loader.nxo.NXOSectionType;
@@ -15,19 +16,22 @@ import ghidra.util.Msg;
 
 public class NSO0Header 
 {
+    public static final int HEADER_SIZE = 0x100;
+    
     private String magic;
     private long version;
     private long flags;
     private NSO0SectionHeader textHeader;
-    private long moduleOffset;
+    private long moduleNameOffset;
     private NSO0SectionHeader rodataHeader;
-    private long moduleFileSize;
+    private long moduleNameSize;
     private NSO0SectionHeader dataHeader;
     private long bssSize;
     private byte[] buildId;
     private long compressedTextSize;
     private long compressedRodataSize;
     private long compressedDataSize;
+    private String moduleName;
     
     public NSO0Header(BinaryReader reader, int readerOffset)
     {
@@ -53,20 +57,42 @@ public class NSO0Header
             reader.readNextUnsignedInt(); // Reserved
             this.flags = reader.readNextUnsignedInt();
             this.textHeader = new NSO0SectionHeader(reader);
-            this.moduleOffset = reader.readNextUnsignedInt();
+            this.moduleNameOffset = reader.readNextUnsignedInt();
             this.rodataHeader = new NSO0SectionHeader(reader);
-            this.moduleFileSize = reader.readNextUnsignedInt();
+            this.moduleNameSize = reader.readNextUnsignedInt();
             this.dataHeader = new NSO0SectionHeader(reader);
             this.bssSize = reader.readNextUnsignedInt();
             this.buildId = reader.readNextByteArray(0x20);
             this.compressedTextSize = reader.readNextUnsignedInt();
             this.compressedRodataSize = reader.readNextUnsignedInt();
             this.compressedDataSize = reader.readNextUnsignedInt();
+            this.readModuleName(reader);
         } 
         catch (IOException e) 
         {
             Msg.error(this, "Failed to read NSO0 header");
         }
+    }
+    
+    // 20.0.0+ stores the module name right after the header. ModuleNameOffset is always
+    // the header size and ModuleNameSize includes the terminator. Older NSOs leave these
+    // fields as reserved values, so only accept them when they describe exactly that layout.
+    private void readModuleName(BinaryReader reader) throws IOException
+    {
+        long textFileOffset = this.textHeader.getFileOffset();
+        
+        if (this.moduleNameOffset != HEADER_SIZE || this.moduleNameSize == 0 ||
+                textFileOffset != HEADER_SIZE + this.moduleNameSize || textFileOffset > reader.length())
+            return;
+        
+        byte[] name = reader.readByteArray(HEADER_SIZE, (int)this.moduleNameSize);
+        int length = 0;
+        
+        while (length < name.length && name[length] != 0)
+            length++;
+        
+        if (length > 0)
+            this.moduleName = new String(name, 0, length, StandardCharsets.UTF_8);
     }
     
     public NSO0SectionHeader getSectionHeader(NXOSectionType type)
@@ -113,6 +139,14 @@ public class NSO0Header
     public long getBssSize()
     {
         return this.bssSize;
+    }
+
+    /**
+     * @return the embedded module name (20.0.0+), or null if absent.
+     */
+    public String getModuleName()
+    {
+        return this.moduleName;
     }
 
     public boolean isZbic()

@@ -140,6 +140,11 @@ public class SwitchLoader extends BinaryLoader
         var adapter = this.binaryType.createAdapter(program, provider);
         this.setDefaultAnalysisOptions(program);
         
+        if (adapter instanceof NSO0Adapter nso && nso.getModuleName() != null)
+        {
+            program.getOptions(Program.PROGRAM_INFO).setString("Module Name", nso.getModuleName());
+        }
+        
         // Set the base address
         try 
         {

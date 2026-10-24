@@ -63,6 +63,11 @@ public class NXProgramBuilder
     protected MemoryBlockHelper memBlockHelper;
     private Disassembler mappingSymbolDisassembler;
     
+    // PLT entries are "adrp x16; ldr x17, [x16, #off]; add x16, x16, #off" followed by a branch.
+    // 20.0.0+ binaries use pointer authentication, branching with braa (modifier x16) instead of br.
+    private static final int BR_X17 = 0xD61F0220;
+    private static final int BRAA_X17_X16 = 0xD71F0A30;
+    
     protected List<PltEntry> pltEntries = new ArrayList<>();
     
     protected int undefSymbolCount;
@@ -245,7 +250,8 @@ public class NXProgramBuilder
             
             for (int i = last; i < adapter.getSection(NXOSectionType.TEXT).getSize(); i++)
             {
-                if (memoryReader.readInt(i) == 0xD61F0220)
+                int insn = memoryReader.readInt(i);
+                if (insn == BR_X17 || insn == BRAA_X17_X16)
                 {
                     pos = i;
                     break;
@@ -262,7 +268,7 @@ public class NXProgramBuilder
             long c = Integer.toUnsignedLong(memoryReader.readInt(off + 8));
             long d = Integer.toUnsignedLong(memoryReader.readInt(off + 12));
 
-            if (d == 0xD61F0220L && (a & 0x9f00001fL) == 0x90000010L && (b & 0xffe003ffL) == 0xf9400211L)
+            if (((int)d == BR_X17 || (int)d == BRAA_X17_X16) && (a & 0x9f00001fL) == 0x90000010L && (b & 0xffe003ffL) == 0xf9400211L)
             {
                 long base = off & ~0xFFFL;
                 long immhi = (a >> 5) & 0x7ffffL;
@@ -400,7 +406,7 @@ public class NXProgramBuilder
 
                         // Make sure the last instruction of this function is a branch.
                         // This check is also performed by AARCH64PltThunkAnalyzer.
-                        if (lastInstruction != null && lastInstruction.getMnemonicString().equals("br")) {
+                        if (lastInstruction != null && (lastInstruction.getMnemonicString().equals("br") || lastInstruction.getMnemonicString().equals("braa"))) {
                             try {
                                 program.getFunctionManager().createThunkFunction(name, null, addr, new AddressSet(addr, lastAddr), extLoc.getFunction(), SourceType.IMPORTED);
                                 lastInstruction.setFlowOverride(FlowOverride.CALL_RETURN);

@@ -46,6 +46,9 @@ public class NSO0Adapter extends MOD0Adapter
     private void read() throws IOException
     {
         this.nso0 = new NSO0Header(this.fileReader, 0x0);
+        
+        if (this.nso0.getModuleName() != null)
+            Msg.info(this, "Module name: " + this.nso0.getModuleName());
 
         LZ4Factory factory = LZ4Factory.fastestInstance();
         LZ4FastDecompressor lz4 = factory.fastDecompressor();
@@ -129,6 +132,11 @@ public class NSO0Adapter extends MOD0Adapter
             lz4.decompress(compressed, out);
             return out;
         }
+    }
+
+    public String getModuleName()
+    {
+        return this.nso0.getModuleName();
     }
 
     @Override
