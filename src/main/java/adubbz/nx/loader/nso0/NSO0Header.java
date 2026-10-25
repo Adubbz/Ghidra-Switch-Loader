@@ -75,14 +75,15 @@ public class NSO0Header
     }
     
     // 20.0.0+ stores the module name right after the header. ModuleNameOffset is always
-    // the header size and ModuleNameSize includes the terminator. Older NSOs leave these
-    // fields as reserved values, so only accept them when they describe exactly that layout.
+    // the header size. ModuleNameSize may or may not include a terminator, and the name may
+    // be padded before .text (e.g. "main" with size 4 and .text at 0x110). Older NSOs leave
+    // these fields as reserved values (size 0), so only accept a name that fits before .text.
     private void readModuleName(BinaryReader reader) throws IOException
     {
         long textFileOffset = this.textHeader.getFileOffset();
-        
+
         if (this.moduleNameOffset != HEADER_SIZE || this.moduleNameSize == 0 ||
-                textFileOffset != HEADER_SIZE + this.moduleNameSize || textFileOffset > reader.length())
+                HEADER_SIZE + this.moduleNameSize > textFileOffset || textFileOffset > reader.length())
             return;
         
         byte[] name = reader.readByteArray(HEADER_SIZE, (int)this.moduleNameSize);

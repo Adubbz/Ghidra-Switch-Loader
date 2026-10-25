@@ -310,46 +310,20 @@ public class IPCAnalyzer extends AbstractAnalyzer
         // NOTE: We can't get the .<bla> block and check if it contains an address, as there may be multiple
         // blocks with the same name, which Ghidra doesn't account for.
         
+        Collection<Address> vtCandidates = gotDataSyms.values();
+        
         // Locate some initial vtables based on RTTI
-        for (Address vtAddr : gotDataSyms.values()) 
+        this.findKnownVtables(program, elfProvider, vtCandidates, knownVTabAddrs);
+        
+        if (knownVTabAddrs.isEmpty())
         {
-            MemoryBlock vtBlock = mem.getBlock(vtAddr);
+            // Newer toolchains (Switch 2) address vtables PC-relatively instead of through the GOT,
+            // so the GOT holds no vtable pointers. Fall back to scanning the data block for vtable heads.
+            vtCandidates = this.scanDataVtableCandidates(program);
+            this.findKnownVtables(program, elfProvider, vtCandidates, knownVTabAddrs);
             
-            // vtables are only found in the data block
-            if (!this.isRttiDataBlock(program, vtBlock))
-                continue;
-            
-            try
-            {
-                Address rttiAddr = aSpace.getAddress(mem.getLong(vtAddr.add(8)));
-                MemoryBlock rttiBlock = mem.getBlock(rttiAddr);
-                
-                // RTTI is only found in the data block
-                if (!this.isRttiDataBlock(program, rttiBlock))
-                    continue;
-
-                Address thisAddr = aSpace.getAddress(mem.getLong(rttiAddr.add(0x8)));
-                MemoryBlock thisBlock = mem.getBlock(thisAddr);
-
-                // FIX 2: use startsWith(".rodata") instead of equals(".rodata") to handle
-                // split rodata sections (.rodata.1, .rodata.2, etc.)
-                if (thisBlock == null || !thisBlock.getName().startsWith(".rodata"))
-                    continue;
-
-                String symbol = elfProvider.getReader().readAsciiString(thisAddr.getOffset());
-
-                if (symbol.isEmpty() || symbol.length() > 512)
-                    continue;
-
-                if (symbol.contains("UnmanagedServiceObject") || symbol.equals("N2nn2sf4cmif6server23CmifServerDomainManager6DomainE"))
-                {
-                    knownVTabAddrs.put(symbol, vtAddr);
-                }
-            }
-            catch (MemoryAccessException e) // Skip entries with out of bounds offsets
-            {
-                continue;
-            }
+            if (!knownVTabAddrs.isEmpty())
+                Msg.info(this, String.format("Located IPC vtable anchors by data scan (%d candidates)", vtCandidates.size()));
         }
         
         if (knownVTabAddrs.isEmpty())
@@ -397,7 +371,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
         Msg.info(this, String.format("Known service address: 0x%x", knownAddress));
         
         // Use the known function to find all IPC vtables
-        for (Address vtAddr : gotDataSyms.values()) 
+        for (Address vtAddr : vtCandidates) 
         {
             MemoryBlock vtBlock = mem.getBlock(vtAddr);
             
@@ -430,6 +404,91 @@ public class IPCAnalyzer extends AbstractAnalyzer
             catch (Exception e)
             {
                 continue;
+            }
+        }
+        
+        return out;
+    }
+    
+    private void findKnownVtables(Program program, ElfCompatibilityProvider elfProvider, Collection<Address> candidates,
+            Map<String, Address> knownVTabAddrs) throws IOException
+    {
+        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
+        Memory mem = program.getMemory();
+        
+        for (Address vtAddr : candidates) 
+        {
+            MemoryBlock vtBlock = mem.getBlock(vtAddr);
+            
+            // vtables are only found in the data block
+            if (!this.isRttiDataBlock(program, vtBlock))
+                continue;
+            
+            try
+            {
+                Address rttiAddr = aSpace.getAddress(mem.getLong(vtAddr.add(8)));
+                MemoryBlock rttiBlock = mem.getBlock(rttiAddr);
+                
+                // RTTI is only found in the data block
+                if (!this.isRttiDataBlock(program, rttiBlock))
+                    continue;
+
+                Address thisAddr = aSpace.getAddress(mem.getLong(rttiAddr.add(0x8)));
+                MemoryBlock thisBlock = mem.getBlock(thisAddr);
+
+                // FIX 2: use startsWith(".rodata") instead of equals(".rodata") to handle
+                // split rodata sections (.rodata.1, .rodata.2, etc.)
+                if (thisBlock == null || !thisBlock.getName().startsWith(".rodata"))
+                    continue;
+
+                String symbol = elfProvider.getReader().readAsciiString(thisAddr.getOffset());
+
+                if (symbol.isEmpty() || symbol.length() > 512)
+                    continue;
+
+                if (symbol.contains("UnmanagedServiceObject") || symbol.equals("N2nn2sf4cmif6server23CmifServerDomainManager6DomainE"))
+                {
+                    knownVTabAddrs.put(symbol, vtAddr);
+                }
+            }
+            catch (MemoryAccessException e) // Skip entries with out of bounds offsets
+            {
+                continue;
+            }
+        }
+    }
+    
+    /**
+     * Every 8-byte aligned address in the RTTI data block that looks like a vtable head:
+     * offset-to-top of 0 followed by a type_info pointer into the same block.
+     */
+    private List<Address> scanDataVtableCandidates(Program program)
+    {
+        List<Address> out = new ArrayList<>();
+        Memory mem = program.getMemory();
+        AddressSpace aSpace = program.getAddressFactory().getDefaultAddressSpace();
+        
+        for (MemoryBlock block : mem.getBlocks())
+        {
+            if (!this.isRttiDataBlock(program, block) || !block.isInitialized())
+                continue;
+            
+            for (long off = block.getStart().getOffset(); off <= block.getEnd().getOffset() - 0x10; off += 0x8)
+            {
+                try
+                {
+                    Address addr = aSpace.getAddress(off);
+                    
+                    if (mem.getLong(addr) != 0)
+                        continue;
+                    
+                    if (this.isRttiDataBlock(program, mem.getBlock(aSpace.getAddress(mem.getLong(addr.add(0x8))))))
+                        out.add(addr);
+                }
+                catch (MemoryAccessException | AddressOutOfBoundsException e)
+                {
+                    continue;
+                }
             }
         }
         
@@ -618,7 +677,31 @@ public class IPCAnalyzer extends AbstractAnalyzer
             }
         }
 
-        Msg.info(this, String.format("locateSTables: built %d relocation candidates", candidates.size()));
+        // With Clang CFI (Switch 2), s_Tables point at a jump table entry ("b process_func")
+        // rather than at the process function itself. Also consider the branch destination.
+        int cfiJumpCandidates = 0;
+        for (Pair<Long, Long> candidate : new ArrayList<>(candidates))
+        {
+            try
+            {
+                long insn = elfProvider.getReader().readUnsignedInt(candidate.first);
+
+                if ((insn & 0xFC000000L) != 0x14000000L)
+                    continue;
+
+                long imm26 = insn & 0x03FFFFFFL;
+                long branchOffset = ((imm26 << 38) >> 38) * 4;
+                candidates.add(new Pair<>(candidate.first + branchOffset, candidate.second));
+                cfiJumpCandidates++;
+            }
+            catch (IOException e)
+            {
+                continue;
+            }
+        }
+
+        Msg.info(this, String.format("locateSTables: built %d relocation candidates (%d via jump table branches)",
+            candidates.size(), cfiJumpCandidates));
 
         candidates.sort(Comparator.comparing(a -> a.first));
 
@@ -633,10 +716,23 @@ public class IPCAnalyzer extends AbstractAnalyzer
         {
             for (long off = text.getStart().getOffset(); off < text.getEnd().getOffset() - 0x4; off += 0x4)
             {
-                long val1 = (elfProvider.getReader().readUnsignedInt(off) & 0xFFFFFF00L) >> 8;
+                long insn1 = elfProvider.getReader().readUnsignedInt(off);
+                long val1 = (insn1 & 0xFFFFFF00L) >> 8;
                 long val2 = (elfProvider.getReader().readUnsignedInt(off + 0x4) & 0xFFFFFF00L) >> 8;
+                boolean sfciMatch = val1 == movMask && val2 == movkMask;
 
-                if (val1 == movMask && val2 == movkMask)
+                // Newer toolchains (Switch 2) may schedule an unrelated instruction between the
+                // two halves, so also accept the movk a few instructions later into the same register.
+                if (!sfciMatch && val1 == movMask)
+                {
+                    for (int k = 2; k <= 4 && !sfciMatch; k++)
+                    {
+                        long insn2 = elfProvider.getReader().readUnsignedInt(off + 0x4L * k);
+                        sfciMatch = ((insn2 & 0xFFFFFF00L) >> 8) == movkMask && (insn2 & 0x1F) == (insn1 & 0x1F);
+                    }
+                }
+
+                if (sfciMatch)
                 {
                     sfciMatchCount++;
                     long processFuncOffset = 0;
@@ -661,7 +757,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                     for (pRetOff = processFuncOffset; pRetOff < text.getEnd().getOffset(); pRetOff += 0x4)
                     {
                         long rval = elfProvider.getReader().readUnsignedInt(pRetOff);
-                        if (rval == 0xD65F03C0L)
+                        if (isReturnOpcode(rval))
                         {
                             foundRet = true;
                             break;
@@ -2634,7 +2730,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
 
             String mnemonic = instruction.getMnemonicString();
 
-            if ("ret".equals(mnemonic))
+            if (isReturnMnemonic(mnemonic))
                 break;
 
             FlowType flowType = instruction.getFlowType();
@@ -3353,7 +3449,7 @@ public class IPCAnalyzer extends AbstractAnalyzer
                 || instructionContainsScalar(instruction, 0x4F434653L))
                 return true;
 
-            if ("ret".equals(instruction.getMnemonicString()))
+            if (isReturnMnemonic(instruction.getMnemonicString()))
                 break;
 
             FlowType flowType = instruction.getFlowType();
@@ -6919,6 +7015,17 @@ public class IPCAnalyzer extends AbstractAnalyzer
             return true;
 
         return this.isSdkLikeLayout(program) && name.startsWith(".data.");
+    }
+
+    // ret, plus the pointer-authenticated retaa/retab used by binaries built with PAC (Switch 2).
+    private static boolean isReturnOpcode(long insn)
+    {
+        return insn == 0xD65F03C0L || insn == 0xD65F0BFFL || insn == 0xD65F0FFFL;
+    }
+
+    public static boolean isReturnMnemonic(String mnemonic)
+    {
+        return "ret".equals(mnemonic) || "retaa".equals(mnemonic) || "retab".equals(mnemonic);
     }
 
     private boolean isExecutableCodeBlock(Program program, MemoryBlock block)

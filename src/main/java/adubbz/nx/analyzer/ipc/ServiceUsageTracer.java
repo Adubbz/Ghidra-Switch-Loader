@@ -6,6 +6,7 @@
  */
 package adubbz.nx.analyzer.ipc;
 
+import adubbz.nx.analyzer.IPCAnalyzer;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
@@ -595,7 +596,7 @@ public class ServiceUsageTracer
                 Address vt = vtableInstalledAtOffsetZero(insn.getFlows()[0]);
                 if (vt != null) return vt;
             }
-            if (mn.equals("ret")) break;
+            if (IPCAnalyzer.isReturnMnemonic(mn)) break;
             a = nextAddr(insn);
         }
         return null;
@@ -629,7 +630,7 @@ public class ServiceUsageTracer
                 }
             }
             else if (d0 != null) rc.remove(d0);
-            if (mn.equals("ret")) break;
+            if (IPCAnalyzer.isReturnMnemonic(mn)) break;
             a = nextAddr(insn);
         }
         return null;
@@ -711,7 +712,7 @@ public class ServiceUsageTracer
                     if (lastImm1 != null && i - lastIdx1 <= 8) return new Decoded(lastImm1, lastImm1Addr, lastImm1Text);
                     if (mn.equals("b") && insn.getFlows().length > 0) { tail = insn.getFlows()[0]; break; }
                 }
-                if (mn.equals("ret")) break;
+                if (IPCAnalyzer.isReturnMnemonic(mn)) break;
                 a = insn.getFallThrough();
             }
             start = tail;

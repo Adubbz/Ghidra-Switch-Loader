@@ -75,51 +75,55 @@ public class MemoryBlockHelper
     {
         Memory memory = this.program.getMemory();
         Address startAddr = this.program.getImageBase().add(addressOffset);
-        Address endAddr = startAddr.add(length);
+        // Inclusive end. Segments may be packed back to back (e.g. Switch 2 binaries), so
+        // the filler must never extend past the segment or it will overlap the next one.
+        Address endAddr = startAddr.add(length - 1);
         AddressRange range = new AddressRangeImpl(startAddr, endAddr);
-        
+
         List<MemoryBlock> blocksInRange = Lists.newArrayList();
-        
+
         for (MemoryBlock block : memory.getBlocks())
         {
             AddressRange blockRange = new AddressRangeImpl(block.getStart(), block.getEnd());
-            
+
             if (range.intersects(blockRange))
             {
                 blocksInRange.add(block);
             }
         }
-        
+
         if (blocksInRange.isEmpty())
         {
             Msg.info(this, "Adding filler section " + name + " from " + startAddr + " to " + endAddr);
-            this.addSection(name, addressOffset, addressOffset, range.getLength(), read, write, execute);
+            this.addSection(name, addressOffset, addressOffset, length, read, write, execute);
             return;
         }
-        
+
         Address fillerBlockStart = startAddr;
-        AddressRange fillerBlockRange;
-        
+
         for (MemoryBlock block : blocksInRange)
         {
-            fillerBlockRange = new AddressRangeImpl(fillerBlockStart, block.getStart());
-            
-            if (fillerBlockRange.getLength() > 2)
-            {
-                long offset = fillerBlockRange.getMinAddress().subtract(this.program.getImageBase());
-                this.addUniqueSection(name, offset, offset, fillerBlockRange.getLength() - 1, read, write, execute);
-            }
-            
-            fillerBlockStart = block.getEnd().add(1);
+            // Gaps of a single byte are skipped, as before.
+            if (block.getStart().compareTo(fillerBlockStart) > 0)
+                this.addFillerGap(name, fillerBlockStart, block.getStart().subtract(fillerBlockStart), read, write, execute);
+
+            if (block.getEnd().compareTo(endAddr) >= 0)
+                return;
+
+            if (block.getEnd().compareTo(fillerBlockStart) >= 0)
+                fillerBlockStart = block.getEnd().add(1);
         }
-        
-        fillerBlockRange = new AddressRangeImpl(fillerBlockStart, endAddr);
-        
-        if (fillerBlockRange.getLength() > 2)
-        {
-            long offset = fillerBlockRange.getMinAddress().subtract(this.program.getImageBase());
-            this.addUniqueSection(name, offset, offset, fillerBlockRange.getLength() - 1, read, write, execute);
-        }
+
+        this.addFillerGap(name, fillerBlockStart, endAddr.subtract(fillerBlockStart) + 1, read, write, execute);
+    }
+
+    private void addFillerGap(String name, Address start, long length, boolean read, boolean write, boolean execute)
+    {
+        if (length < 2)
+            return;
+
+        long offset = start.subtract(this.program.getImageBase());
+        this.addUniqueSection(name, offset, offset, length, read, write, execute);
     }
     
     public void flushLog()

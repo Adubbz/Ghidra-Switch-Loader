@@ -138,9 +138,24 @@ public class NXProgramBuilder
             this.setupSymbolTable();
             
             // Create BSS. This needs to be done before the EXTERNAL block is created in setupImports
-            Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getBssOffset());
-            Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + adapter.getBssSize()));
-            MemoryBlockUtils.createUninitializedBlock(this.program, false, ".bss", bssStartAddr, adapter.getBssSize(), "", null, true, true, false, new MessageLog());
+            long bssOffset = adapter.getBssOffset();
+            long bssSize = adapter.getBssSize();
+            long dataEnd = data.getOffset() + data.getSize();
+
+            // Some binaries store the start of .bss as zeroes at the end of .data. That part is
+            // already mapped by .data, so the uninitialized block only covers the remainder.
+            if (bssOffset < dataEnd)
+            {
+                bssSize -= Math.min(bssSize, dataEnd - bssOffset);
+                bssOffset = dataEnd;
+            }
+
+            if (bssSize > 0)
+            {
+                Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + bssOffset);
+                Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + bssSize));
+                MemoryBlockUtils.createUninitializedBlock(this.program, false, ".bss", bssStartAddr, bssSize, "", null, true, true, false, new MessageLog());
+            }
             
             this.setupImports(monitor);
             this.performRelocations();
