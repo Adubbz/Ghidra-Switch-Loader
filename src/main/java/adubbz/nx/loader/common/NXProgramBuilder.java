@@ -66,6 +66,12 @@ public class NXProgramBuilder
     // PLT entries are "adrp x16; ldr x17, [x16, #off]; add x16, x16, #off" followed by a branch.
     // 20.0.0+ binaries use pointer authentication, branching with braa (modifier x16) instead of br.
     private static final int BR_X17 = 0xD61F0220;
+    
+    // PAuth ABI dynamic relocations (Switch 2 applets). The runtime loader also signs the
+    // resulting pointer; Ghidra has no notion of signed pointers, so apply them unsigned.
+    private static final int R_AARCH64_AUTH_ABS64 = 0x244;
+    private static final int R_AARCH64_AUTH_RELATIVE = 0x411;
+    private static final int R_AARCH64_AUTH_GLOB_DAT = 0x412;
     private static final int BRAA_X17_X16 = 0xD71F0A30;
     
     protected List<PltEntry> pltEntries = new ArrayList<>();
@@ -355,7 +361,9 @@ public class NXProgramBuilder
             }
             else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_GLOB_DAT.typeId() ||
                 reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_JUMP_SLOT.typeId() ||
-                reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_ABS64.typeId()) 
+                reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_ABS64.typeId() ||
+                reloc.r_type == R_AARCH64_AUTH_GLOB_DAT ||
+                reloc.r_type == R_AARCH64_AUTH_ABS64) 
             {
                 if (reloc.sym == null) 
                 {
@@ -371,7 +379,8 @@ public class NXProgramBuilder
                         gotNameLookup.put(reloc.offset, reloc.sym.getNameAsString());
                 }
             } 
-            else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_RELATIVE.typeId()) 
+            else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_RELATIVE.typeId() ||
+                reloc.r_type == R_AARCH64_AUTH_RELATIVE) 
             {
                 program.getMemory().setLong(target, this.nxo.getBaseAddress() + reloc.addend);
             }
