@@ -144,6 +144,11 @@ public class SwitchLoader extends BinaryLoader
         {
             program.getOptions(Program.PROGRAM_INFO).setString("Module Name", nso.getModuleName());
         }
+
+        if (adapter instanceof NSO0Adapter nso && nso.getRuntimeBase() != null)
+        {
+            program.getOptions(Program.PROGRAM_INFO).setString("Normalized Runtime Image", String.format("base 0x%X", nso.getRuntimeBase()));
+        }
         
         // Set the base address
         try 

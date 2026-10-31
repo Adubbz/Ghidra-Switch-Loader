@@ -27,7 +27,8 @@ public class NSO0Adapter extends MOD0Adapter
     
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
-    
+    protected Long runtimeBase;
+
     public NSO0Adapter(Program program, ByteProvider fileProvider)
     {
         super(program, fileProvider);
@@ -86,6 +87,17 @@ public class NSO0Adapter extends MOD0Adapter
         System.arraycopy(decompressedData, 0, full,
             Math.toIntExact(dataOffset), Math.toIntExact(dataSize));
 
+        RuntimeImageNormalizer.Result normalized = RuntimeImageNormalizer.normalize(full, textOffset,
+            rodataOffset, rodataSize, dataOffset, dataSize, this.nso0.getBssSize());
+
+        if (normalized != null)
+        {
+            this.runtimeBase = normalized.runtimeBase();
+            rodataSize = normalized.rodataSize();
+            dataOffset = normalized.dataOffset();
+            dataSize = normalized.dataSize();
+        }
+
         this.memoryProvider = new ByteArrayProvider(full);
 
         this.sections = new NXOSection[3];
@@ -137,6 +149,12 @@ public class NSO0Adapter extends MOD0Adapter
     public String getModuleName()
     {
         return this.nso0.getModuleName();
+    }
+
+    // The base a runtime capture was normalized from, or null for a normal NSO.
+    public Long getRuntimeBase()
+    {
+        return this.runtimeBase;
     }
 
     @Override
