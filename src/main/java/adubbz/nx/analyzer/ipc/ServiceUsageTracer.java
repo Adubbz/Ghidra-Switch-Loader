@@ -14,6 +14,7 @@ import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.Memory;
+import ghidra.program.model.reloc.Relocation;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 
@@ -39,9 +40,26 @@ import java.util.*;
  * </ol>
  * Output groups proven commands as root commands + sub-interface commands keyed by the root command
  * that opens the sub-interface (e.g. fsp-srv cmd 400 OpenDeviceOperator -&gt; IDeviceOperator cmds).
+ * <p>
+ * Switch 2 modules are built with Clang CFI and/or PAuth, which changes the code this relies on:
+ * <ul>
+ *   <li>Virtual calls run an outlined check ({@code ldr x15,[obj]; bl <check>; ldr x8,[x15,#off]}). A
+ *       check names the vtables it allows, so one allowing a single vtable TYPES its call sites
+ *       directly, with no provenance needed (see {@link #addTypedCalls}).</li>
+ *   <li>Applets authenticate instead ({@code autda x16,x17; ldr x8,[x16,#off]!; blraa x8,x16}), which
+ *       is the same load chain once the authentication is seen through. The call's discriminator
+ *       identifies the method, and must match the one the target slot was signed with, so it types
+ *       the call the way a CFI check does.</li>
+ *   <li>Stubs marshal the CMIF message inline, so the command id is proven by the constant stored
+ *       right after the SFCI magic (see {@link #decodeSfciCommand}).</li>
+ * </ul>
  */
 public class ServiceUsageTracer
 {
+    private static final long SFCI_MAGIC = 0x49434653L;
+    private static final java.util.regex.Pattern MOVK_OPERANDS =
+        java.util.regex.Pattern.compile("#(0x[0-9a-fA-F]+|\\d+)(?:.*?#(0x[0-9a-fA-F]+|\\d+))?");
+
     /**
      * Full byte-level proof for one invoked command:
      * <ul>
@@ -121,6 +139,11 @@ public class ServiceUsageTracer
     private final Map<Long, Map<Long, Slot>> offToCmdCache = new HashMap<>();   // vtableAddr -> off->slot
     private final Map<String, Long> subVtCache = new HashMap<>();               // "Vhex:off" -> sub vtable (0 = none)
     private final Map<Long, Integer> vtableValidationCache = new HashMap<>();   // addr -> #slots that decode
+    private final Map<Long, Optional<List<Long>>> cfiCheckCache = new HashMap<>();   // entry -> allowed vtables
+    private Map<Long, TreeMap<Long, TreeSet<Long>>> cfiTypedCalls;              // vtable -> off -> call sites
+    private Map<Long, Map<Long, TreeSet<Long>>> authenticatedCalls;             // off -> discriminator -> call sites
+    private final Map<Long, Optional<Decoded>> decodedStubs = new HashMap<>();  // stub -> decoded
+    private Boolean pointerAuthBuild;
 
     public ServiceUsageTracer(ghidra.program.model.listing.Program program)
     {
@@ -260,9 +283,506 @@ public class ServiceUsageTracer
         offToCmdCache.clear();
         subVtCache.clear();
         ServiceUsage usage = new ServiceUsage(serviceName, rootVtable);
+        // A connector can name several services (e.g. set:cal, set:fd and set:sys share one) or be a
+        // server's registration, so its vtable isn't proven to be this service's proxy. Hardened builds
+        // can check that, and must: a wrong vtable turns every typed call into a confident false result.
+        String iface = databaseInterfaceFor(serviceName, offToCmd(rootVtable));
+        if (isPointerAuthBuild() && !isProxyVtable(offToCmd(rootVtable), iface))
+            return usage;
         for (Function f : consumers)
             analyzeConsumer(f, usage);
+        addTypedCalls(iface, usage);
         return usage;
+    }
+
+    private String databaseInterfaceFor(String serviceName, Map<Long, Slot> slots)
+    {
+        Set<Long> commands = new HashSet<>();
+        for (Slot slot : slots.values())
+            commands.add(slot.cmd);
+        return IPCDatabase.getInstance().getServiceInterface(serviceName, commands);
+    }
+
+    /**
+     * Adds the call sites whose CFI check or call discriminator proves them to be on this service's
+     * proxy, or on a sub-interface one of its commands returns. Only hardened builds have these.
+     */
+    private void addTypedCalls(String iface, ServiceUsage usage)
+    {
+        if (!isPointerAuthBuild())
+            return;
+
+        Map<Long, Slot> rootSlots = offToCmd(rootVtable);
+        addTypedSites(typedSitesFor(rootVtable), rootSlots, usage, usage.rootCommands);
+        if (iface == null)
+            return;
+
+        // Each sub-interface proxy is credited to one opening command, preferring one with real calls.
+        // Which command really opened an object isn't provable from its call sites alone.
+        IPCDatabase database = IPCDatabase.getInstance();
+        Map<Long, Long> openCommandBySub = new HashMap<>();
+        for (Map.Entry<Long, Slot> e : rootSlots.entrySet())
+        {
+            String outInterface = isControl(e.getKey()) ? null : database.getOutInterface(iface, e.getValue().cmd);
+            if (outInterface == null)
+                continue;
+            long sub = subVtableFor(rootVtable, e.getKey());
+            if (sub == 0 || sub == rootVtable || typedSitesFor(sub).isEmpty() || !isProxyVtable(offToCmd(sub), outInterface))
+                continue;
+            long cmd = e.getValue().cmd;
+            Long prior = openCommandBySub.get(sub);
+            CommandProof proof = usage.rootCommands.get(cmd);
+            boolean hasCalls = proof != null && !proof.callSites.isEmpty();
+            CommandProof priorProof = prior != null ? usage.rootCommands.get(prior) : null;
+            boolean priorHasCalls = priorProof != null && !priorProof.callSites.isEmpty();
+            if (prior == null || (hasCalls && !priorHasCalls) || (hasCalls == priorHasCalls && cmd < prior))
+                openCommandBySub.put(sub, cmd);
+        }
+
+        for (Map.Entry<Long, Long> e : openCommandBySub.entrySet())
+        {
+            TreeMap<Long, CommandProof> target = new TreeMap<>();
+            addTypedSites(typedSitesFor(e.getKey()), offToCmd(e.getKey()), usage, target);
+            if (!target.isEmpty())
+                usage.subCommandsByOpenCommand.computeIfAbsent(e.getValue(), key -> new TreeMap<>()).putAll(target);
+        }
+    }
+
+    /** The call sites proven to be on a vtable, by vtable offset. */
+    private TreeMap<Long, TreeSet<Long>> typedSitesFor(long vtable)
+    {
+        TreeMap<Long, TreeSet<Long>> sites = new TreeMap<>();
+        TreeMap<Long, TreeSet<Long>> checked = cfiTypedCalls().get(vtable);
+        if (checked != null)
+            checked.forEach((off, calls) -> sites.computeIfAbsent(off, k -> new TreeSet<>()).addAll(calls));
+
+        for (Map.Entry<Long, Map<Long, TreeSet<Long>>> e : authenticatedCalls().entrySet())
+        {
+            Long discriminator = slotDiscriminator(vtable + e.getKey());
+            TreeSet<Long> calls = discriminator != null ? e.getValue().get(discriminator) : null;
+            if (calls != null)
+                sites.computeIfAbsent(e.getKey(), k -> new TreeSet<>()).addAll(calls);
+        }
+        return sites;
+    }
+
+    /**
+     * The discriminator a vtable slot is signed with. An AUTH relocation keeps its signing schema in
+     * the place it relocates (discriminator in bits 32-47), and the relocation table preserves the
+     * bytes the loader overwrote. Null for a slot that isn't signed with the IA key.
+     */
+    private Long slotDiscriminator(long slot)
+    {
+        List<Relocation> relocations = program.getRelocationTable().getRelocations(addr(slot));
+        if (relocations.isEmpty())
+            return null;
+        byte[] original = relocations.get(0).getBytes();
+        if (original == null || original.length != 8)
+            return null;
+        long schema = java.nio.ByteBuffer.wrap(original).getLong();
+        boolean instructionKeyA = ((schema >>> 60) & 0x3) == 0;
+        return instructionKeyA ? (schema >>> 32) & 0xFFFF : null;
+    }
+
+    /**
+     * Every authenticated virtual call: {@code autda xV,..; ldr xM,[xV,#off]!; movk xV,#disc,LSL #48;
+     * blraa xM,xV}. An offset too large to encode is added first: {@code mov x17,#off; add xV,xV,x17;
+     * ldr xM,[xV]}.
+     */
+    private Map<Long, Map<Long, TreeSet<Long>>> authenticatedCalls()
+    {
+        if (authenticatedCalls != null)
+            return authenticatedCalls;
+
+        authenticatedCalls = new HashMap<>();
+        for (Instruction insn : listing.getInstructions(true))
+        {
+            String mn = insn.getMnemonicString().toLowerCase();
+            if (!mn.equals("blraa") && !mn.equals("braa"))
+                continue;
+            String method = reg(insn, 0);
+            String discriminatorReg = reg(insn, 1);
+            if (method == null || discriminatorReg == null)
+                continue;
+
+            Long discriminator = null;
+            Long off = null;
+            String offsetReg = null;
+            boolean authenticated = false;
+            Instruction p = insn.getPrevious();
+            for (int i = 0; i < 14 && p != null; i++, p = p.getPrevious())
+            {
+                String pm = p.getMnemonicString().toLowerCase();
+                if (pm.equals("bl") || pm.equals("b") || IPCAnalyzer.isReturnMnemonic(pm))
+                    break;
+                if (discriminator == null && pm.equals("movk") && discriminatorReg.equals(reg(p, 0)))
+                {
+                    long[] chunk = parseMovk(p);
+                    if (chunk == null || chunk[1] != 48)
+                        break;
+                    discriminator = chunk[0];
+                }
+                else if (off == null && (pm.equals("ldr") || pm.equals("ldur")) && method.equals(reg(p, 0)))
+                {
+                    long[] mem = memBaseOff(p);
+                    if (mem == null || !discriminatorReg.equals("x" + mem[0]))
+                        break;
+                    off = mem[1];
+                }
+                else if (off != null && pm.equals("add") && discriminatorReg.equals(reg(p, 0)))
+                {
+                    Long im = imm(p, 2);
+                    if (im != null)
+                        off += im;
+                    else
+                        offsetReg = reg(p, 2);
+                }
+                else if (offsetReg != null && (pm.equals("mov") || pm.equals("movz")) && offsetReg.equals(reg(p, 0)))
+                {
+                    Long im = imm(p, 1);
+                    if (im == null)
+                        break;
+                    off += im;
+                    offsetReg = null;
+                }
+                else if (off != null && isDataPointerAuth(pm) && discriminatorReg.equals(reg(p, 0)))
+                {
+                    authenticated = true;
+                    break;
+                }
+            }
+            if (discriminator != null && off != null && authenticated && offsetReg == null)
+                authenticatedCalls.computeIfAbsent(off, k -> new HashMap<>())
+                    .computeIfAbsent(discriminator, k -> new TreeSet<>()).add(insn.getAddress().getOffset());
+        }
+        return authenticatedCalls;
+    }
+
+    private void addTypedSites(TreeMap<Long, TreeSet<Long>> sites, Map<Long, Slot> slots, ServiceUsage usage,
+                               TreeMap<Long, CommandProof> target)
+    {
+        if (sites == null)
+            return;
+        for (Map.Entry<Long, TreeSet<Long>> e : sites.entrySet())
+        {
+            long off = e.getKey();
+            if (isControl(off))
+                continue;
+            Slot slot = slots.get(off);
+            if (slot == null)
+            {
+                usage.unresolved += e.getValue().size();
+                continue;
+            }
+            target.computeIfAbsent(slot.cmd, c -> new CommandProof(slot.cmd, off, slot.stub, slot.decodeSite, slot.decodeText))
+                .callSites.addAll(e.getValue());
+        }
+    }
+
+    /**
+     * True if a vtable is a client proxy for the interface. Each slot of a proxy is a different command,
+     * while server code only decodes by accident, often to one value from a shared helper. Most of the
+     * commands must also exist on the interface, if it's known; not all, as versions add and remove
+     * some. LTO strips unused stubs from proxies, so how many of the slots decode says nothing.
+     */
+    private boolean isProxyVtable(Map<Long, Slot> slots, String iface)
+    {
+        Set<Long> commands = new HashSet<>();
+        for (Slot slot : slots.values())
+            commands.add(slot.cmd);
+
+        if (commands.size() < 2 || commands.size() * 2 <= slots.size())
+            return false;
+        if (iface == null)
+            return true;
+
+        int known = 0;
+        for (long cmd : commands)
+            if (IPCDatabase.getInstance().getCommandName(iface, cmd) != null)
+                known++;
+        return known * 2 > commands.size();
+    }
+
+    /** Every call site a CFI check types, grouped by vtable and vtable offset. */
+    private Map<Long, TreeMap<Long, TreeSet<Long>>> cfiTypedCalls()
+    {
+        if (cfiTypedCalls != null)
+            return cfiTypedCalls;
+
+        cfiTypedCalls = new HashMap<>();
+        for (Instruction insn : listing.getInstructions(true))
+        {
+            if (!insn.getMnemonicString().equalsIgnoreCase("bl") || insn.getFlows().length == 0)
+                continue;
+            List<Long> allowed = cfiCheckVtables(insn.getFlows()[0]);
+            if (allowed == null || allowed.isEmpty())
+                continue;
+
+            Instruction method = insn.getNext();
+            String methodReg = null;
+            long off = 0;
+            for (int i = 0; i < 16 && method != null; i++, method = method.getNext())
+            {
+                String mn = canonicalBranch(method.getMnemonicString().toLowerCase());
+                if (mn.equals("bl") || mn.equals("b") || IPCAnalyzer.isReturnMnemonic(mn))
+                    break;
+                if (methodReg == null)
+                {
+                    long[] mem = mn.equals("ldr") || mn.equals("ldur") ? memBaseOff(method) : null;
+                    if (mem != null && mem[0] == 15 && reg(method, 0) != null)
+                    {
+                        methodReg = reg(method, 0);
+                        off = mem[1];
+                    }
+                }
+                else if ((mn.equals("blr") || mn.equals("br")) && methodReg.equals(reg(method, 0)))
+                {
+                    Long vtable = allowed.size() == 1 ? allowed.get(0) : soleCommandVtable(allowed, off);
+                    if (vtable != null)
+                        cfiTypedCalls.computeIfAbsent(vtable, k -> new TreeMap<>())
+                            .computeIfAbsent(off, k -> new TreeSet<>()).add(method.getAddress().getOffset());
+                    break;
+                }
+                else if (methodReg.equals(reg(method, 0)) && !readsOperand0(mn))
+                    break;
+            }
+        }
+        return cfiTypedCalls;
+    }
+
+    /**
+     * The one vtable of a CFI check's set with a command stub at this offset, or null. A base class's
+     * check also allows its server implementations, but those have no stub for a proxy's command.
+     */
+    private Long soleCommandVtable(List<Long> allowed, long off)
+    {
+        if (isControl(off))
+            return null;
+        Long sole = null;
+        for (long vtable : allowed)
+        {
+            long stub;
+            try { stub = memory.getLong(addr(vtable + off)); } catch (Exception e) { continue; }
+            if (!isCode(stub) || decodeCmd(addr(stub)) == null)
+                continue;
+            if (sole != null)
+                return null;
+            sole = vtable;
+        }
+        return sole;
+    }
+
+    /**
+     * The vtables an outlined CFI check allows for the pointer in x15, or null if the function isn't a
+     * check. A check for a function pointer rather than a vtable returns an empty list. The forms are:
+     * <pre>
+     *   adr x9,vt;   cmp x15,x9;                 b.ne trap                     (one vtable)
+     *   adr x9,top;  sub x9,x9,x15; ror x9,x9,#s; cmp x9,#n; b.hs trap          (n vtables, 1&lt;&lt;s apart)
+     *   ...plus:     adr x10,tbl; ldrb w9,[x10,x9]; tbz w9,#bit,trap            (a bitset of those)
+     * </pre>
+     */
+    private List<Long> cfiCheckVtables(Address entry)
+    {
+        Optional<List<Long>> cached = cfiCheckCache.get(entry.getOffset());
+        if (cached != null)
+            return cached.orElse(null);
+        List<Long> parsed = parseCfiCheck(entry);
+        cfiCheckCache.put(entry.getOffset(), Optional.ofNullable(parsed));
+        return parsed;
+    }
+
+    private List<Long> parseCfiCheck(Address entry)
+    {
+        Map<String, Long> constants = new HashMap<>();
+        Long single = null, base = null, table = null, bound = null;
+        boolean ascending = false, exclusive = false, returned = false;
+        int shift = -1, bit = -1;
+
+        Address a = entry;
+        for (int i = 0; i < 18 && a != null && !returned; i++)
+        {
+            Instruction insn = at(a);
+            if (insn == null)
+                return null;
+            String mn = insn.getMnemonicString().toLowerCase();
+            String d0 = op(insn, 0);
+            switch (mn)
+            {
+                case "nop":
+                    break;
+                case "adr": case "adrp":
+                {
+                    Long im = imm(insn, 1);
+                    if (im == null)
+                        return null;
+                    constants.put(d0, im);
+                    break;
+                }
+                case "add":
+                {
+                    Long im = imm(insn, 2);
+                    if (im == null || !constants.containsKey(op(insn, 1)))
+                        return null;
+                    constants.put(d0, constants.get(op(insn, 1)) + im);
+                    break;
+                }
+                case "mov": case "movz":
+                {
+                    Long im = imm(insn, 1);
+                    if (im == null)
+                        return null;
+                    constants.put(d0.replace('w', 'x'), im);
+                    break;
+                }
+                case "sub":
+                {
+                    if ("x15".equals(op(insn, 2)) && constants.containsKey(op(insn, 1)))
+                        base = constants.get(op(insn, 1));
+                    else if ("x15".equals(op(insn, 1)) && constants.containsKey(op(insn, 2)))
+                    {
+                        base = constants.get(op(insn, 2));
+                        ascending = true;
+                    }
+                    else
+                        return null;
+                    break;
+                }
+                case "ror":
+                {
+                    Long im = imm(insn, 2);
+                    if (im == null)
+                        return null;
+                    shift = im.intValue();
+                    break;
+                }
+                case "cmp":
+                {
+                    String left = op(insn, 0), right = op(insn, 1);
+                    if ("x15".equals(left) || "x15".equals(right))
+                    {
+                        single = constants.get("x15".equals(left) ? right : left);
+                        if (single == null)
+                            return null;
+                    }
+                    else
+                    {
+                        bound = constants.containsKey(right) ? constants.get(right) : parseImm(right);
+                        if (bound == null)
+                            return null;
+                    }
+                    break;
+                }
+                case "b.hi": case "b.ne":
+                    break;
+                case "b.hs": case "b.cs":
+                    exclusive = true;
+                    break;
+                case "ldrb":
+                {
+                    long[] mem = null;
+                    String o = insn.getDefaultOperandRepresentation(1);
+                    if (o != null && o.indexOf('[') >= 0)
+                        mem = new long[] { 0 };
+                    String baseReg = o != null ? o.toLowerCase().replace("[", "").split(",")[0].trim() : null;
+                    if (mem == null || !constants.containsKey(baseReg))
+                        return null;
+                    table = constants.get(baseReg);
+                    break;
+                }
+                case "tbz":
+                {
+                    Long im = imm(insn, 1);
+                    if (im == null)
+                        return null;
+                    bit = im.intValue();
+                    break;
+                }
+                case "ret":
+                    returned = true;
+                    break;
+                default:
+                    return null;   // Anything else (a prologue, a store, a call) isn't a check
+            }
+            a = returned ? null : insn.getFallThrough();
+        }
+
+        if (!returned)
+            return null;
+        if (single != null)
+            return isCode(single) ? Collections.emptyList() : Collections.singletonList(single);
+        if (base == null || bound == null || shift < 0 || (table != null && bit < 0))
+            return null;
+
+        List<Long> allowed = new ArrayList<>();
+        long count = exclusive ? bound : bound + 1;
+        for (long i = 0; i < count; i++)
+        {
+            try
+            {
+                if (table != null && ((memory.getByte(addr(table + i)) >> bit) & 1) == 0)
+                    continue;
+            }
+            catch (Exception e) { return null; }
+            long member = ascending ? base + (i << shift) : base - (i << shift);
+            if (isCode(member))
+                return Collections.emptyList();
+            allowed.add(member);
+        }
+        return allowed;
+    }
+
+    /** Signing the vtable pointer an object is given leaves its value, and so what it's tracked as. */
+    private static boolean isDataPointerSign(String mn)
+    {
+        switch (mn)
+        {
+            case "pacda": case "pacdb": case "pacdza": case "pacdzb":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** A vtable's address can be loaded either way on hardened builds, where the linker relaxes adrp/add. */
+    private boolean isAddressLoad(String mn)
+    {
+        return mn.equals("adrp") || (mn.equals("adr") && isPointerAuthBuild());
+    }
+
+    private boolean isVtableHead(long address)
+    {
+        try
+        {
+            return memory.getLong(addr(address)) == 0 && memory.getBlock(addr(memory.getLong(addr(address + 8)))) != null
+                && !isCode(memory.getLong(addr(address + 8)));
+        }
+        catch (Exception e) { return true; }
+    }
+
+    private boolean isCode(long offset)
+    {
+        var block = memory.getBlock(addr(offset));
+        return block != null && block.isExecute();
+    }
+
+    /** Authenticated indirect branches are ordinary ones for type flow. */
+    private static String canonicalBranch(String mn)
+    {
+        if (mn.startsWith("blra")) return "blr";
+        if (mn.startsWith("bra")) return "br";
+        return mn;
+    }
+
+    /** Authenticating a data pointer leaves its value, and so what it was tracked as, unchanged. */
+    private static boolean isDataPointerAuth(String mn)
+    {
+        switch (mn)
+        {
+            case "autda": case "autdb": case "autdza": case "autdzb": case "xpacd":
+                return true;
+            default:
+                return false;
+        }
     }
 
     /** The RTTI-resolved client-proxy vtable(s) for a service's root interface (matched by simple name). */
@@ -298,6 +818,12 @@ public class ServiceUsageTracer
         {
             String mn = insn.getMnemonicString().toLowerCase();
             if (mn.equals("ldur")) mn = "ldr"; else if (mn.equals("stur")) mn = "str";
+            mn = canonicalBranch(mn);
+            if (isDataPointerAuth(mn))
+            {
+                insn = insn.getNext();
+                continue;
+            }
             String d0 = reg(insn, 0);
 
             if (mn.equals("add") && "x29".equals(d0) && "x31".equals(reg(insn, 1)))
@@ -381,6 +907,16 @@ public class ServiceUsageTracer
                     }
                 }
                 clearCallerSaved(regKind, regTag, regGlobal);
+            }
+            else if (mn.equals("bl") && isCfiCheckCall(insn))
+            {
+                // Only x9/x10 are scratch here; the vtable in x15 and everything else survive the check.
+                for (String scratch : new String[] { "x9", "x10" })
+                {
+                    regKind.put(scratch, null);
+                    regTag.remove(scratch);
+                    regGlobal.remove(scratch);
+                }
             }
             else if (mn.equals("bl"))
             {
@@ -612,7 +1148,8 @@ public class ServiceUsageTracer
             if (insn == null) break;
             String mn = insn.getMnemonicString().toLowerCase();
             String d0 = op(insn, 0);
-            if (mn.equals("adrp")) { Long im = imm(insn, 1); if (d0 != null && im != null) rc.put(d0, im); }
+            if (isDataPointerSign(mn)) { a = nextAddr(insn); continue; }
+            if (isAddressLoad(mn)) { Long im = imm(insn, 1); if (d0 != null && im != null) rc.put(d0, im); }
             else if (mn.equals("add"))
             {
                 String s = op(insn, 1); Long im = imm(insn, 2);
@@ -655,6 +1192,11 @@ public class ServiceUsageTracer
             long off = (long) i * 8; long val;
             try { val = memory.getLong(addr(vtable + off)); } catch (Exception e) { break; }
             Address stub = addr(val);
+            // The next vtable starts with non-code, and SFCI decoding would read on into its commands.
+            // A zero alone is a stripped stub, unless a type_info follows it: that's the next vtable's
+            // offset-to-top. Older builds keep their gap-tolerant scan.
+            if (isPointerAuthBuild() && !isCode(val) && (val != 0 || isVtableHead(vtable + off)))
+                break;
             if (memory.getBlock(stub) == null) continue;
             Decoded decoded = decodeCmd(stub);
             if (decoded != null) m.put(off, new Slot(decoded.cmd, val, decoded.site, decoded.text));
@@ -666,6 +1208,23 @@ public class ServiceUsageTracer
     /** Decode a stub to {commandId, decode-site address, decode-site instruction text}. */
     private Decoded decodeCmd(Address start)
     {
+        Optional<Decoded> cached = decodedStubs.get(start.getOffset());
+        if (cached != null)
+            return cached.orElse(null);
+        Decoded decoded = decodeStub(start);
+        decodedStubs.put(start.getOffset(), Optional.ofNullable(decoded));
+        return decoded;
+    }
+
+    private Decoded decodeStub(Address start)
+    {
+        if (isPointerAuthBuild())
+        {
+            Decoded sfci = decodeSfciCommand(start, 0, new HashSet<>(), new boolean[1]);
+            if (sfci != null)
+                return sfci;
+        }
+
         for (int hop = 0; hop < 2 && start != null; hop++)
         {
             Address a = start; Address tail = null;
@@ -680,7 +1239,7 @@ public class ServiceUsageTracer
             {
                 Instruction insn = at(a);
                 if (insn == null) break;
-                String mn = insn.getMnemonicString().toLowerCase();
+                String mn = canonicalBranch(insn.getMnemonicString().toLowerCase());
                 if (mn.equals("mov") || mn.equals("movz"))
                 {
                     String dr = op(insn, 0);
@@ -718,6 +1277,193 @@ public class ServiceUsageTracer
             start = tail;
         }
         return null;
+    }
+
+    /** True for builds using return-address signing, whose stubs marshal their messages inline. */
+    private boolean isPointerAuthBuild()
+    {
+        if (pointerAuthBuild == null)
+        {
+            pointerAuthBuild = false;
+            for (Instruction insn : listing.getInstructions(true))
+            {
+                String mn = insn.getMnemonicString().toLowerCase();
+                if (mn.equals("pacibsp") || mn.equals("paciasp"))
+                {
+                    pointerAuthBuild = true;
+                    break;
+                }
+            }
+        }
+        return pointerAuthBuild;
+    }
+
+    /**
+     * Decodes a stub by its message: a CMIF header is the SFCI magic, then the command id 8 bytes
+     * later, so a constant stored there IS the command. Immediates elsewhere in a stub are unreliable
+     * (a {@code mov w3,#0x301} is the size of an FsPath). Follows tail calls, then the stub's callees,
+     * as stubs often leave marshalling to a per-command helper. Returns null if the id isn't constant
+     * here, as with a shared dispatcher, which is what the caller's register scan is for; {@code
+     * magicSeen} stops a search of the callees finding an unrelated message.
+     */
+    private Decoded decodeSfciCommand(Address entry, int depth, Set<Long> visited, boolean[] magicSeen)
+    {
+        if (!visited.add(entry.getOffset()))
+            return null;
+
+        Map<String, Long> constants = new HashMap<>();
+        Map<String, Instruction> definitions = new HashMap<>();
+        Map<String, long[]> stored = new HashMap<>();              // "reg:off" -> {value}
+        Map<String, Instruction> storedDefinitions = new HashMap<>();
+        List<Address> callees = new ArrayList<>();
+        String commandSlot = null;
+        Decoded zeroCommand = null;
+
+        Address a = entry;
+        for (int i = 0; i < 400 && a != null; i++)
+        {
+            Instruction insn = at(a);
+            if (insn == null)
+                break;
+            String mn = insn.getMnemonicString().toLowerCase();
+            String d0 = reg(insn, 0);
+
+            if (IPCAnalyzer.isReturnMnemonic(mn))
+                break;
+            if (mn.equals("b") && insn.getFlows().length > 0)
+            {
+                a = insn.getFlows()[0];
+                continue;
+            }
+            if (mn.equals("bl"))
+            {
+                if (insn.getFlows().length > 0 && !isCfiCheckCall(insn))
+                    callees.add(insn.getFlows()[0]);
+                if (!isCfiCheckCall(insn))
+                    for (int r = 0; r <= 18; r++)
+                        forgetRegister("x" + r, constants, definitions, stored);
+            }
+            else if (mn.equals("mov") || mn.equals("movz"))
+            {
+                String src = op(insn, 1);
+                Long im = "wzr".equals(src) || "xzr".equals(src) ? Long.valueOf(0) : imm(insn, 1);
+                String copied = reg(insn, 1);
+                forgetRegister(d0, constants, definitions, stored);
+                if (d0 != null && im != null)
+                {
+                    constants.put(d0, im);
+                    definitions.put(d0, insn);
+                }
+                else if (d0 != null && copied != null && constants.containsKey(copied))
+                {
+                    constants.put(d0, constants.get(copied));
+                    definitions.put(d0, definitions.get(copied));
+                }
+            }
+            else if (mn.equals("movk"))
+            {
+                Long value = constants.get(d0);
+                long[] chunk = parseMovk(insn);
+                if (value != null && chunk != null)
+                    constants.put(d0, (value & ~(0xFFFFL << chunk[1])) | (chunk[0] << chunk[1]));
+                else
+                    forgetRegister(d0, constants, definitions, stored);
+            }
+            else if (mn.equals("str") || mn.equals("stur") || mn.equals("stp"))
+            {
+                long[] mem = memBaseOff(insn);
+                if (mem != null)
+                {
+                    String base = mem[0] == 31 ? "x31" : "x" + mem[0];
+                    int width = op(insn, 0) != null && op(insn, 0).startsWith("w") ? 4 : 8;
+                    int count = mn.equals("stp") ? 2 : 1;
+                    for (int r = 0; r < count; r++)
+                    {
+                        String src = op(insn, r);
+                        boolean zero = "xzr".equals(src) || "wzr".equals(src);
+                        Long value = zero ? Long.valueOf(0) : constants.get(reg(insn, r));
+                        String slot = base + ":" + (mem[1] + r * width);
+                        if (value == null)
+                        {
+                            stored.remove(slot);
+                            storedDefinitions.remove(slot);
+                            continue;
+                        }
+                        stored.put(slot, new long[] { value });
+                        storedDefinitions.put(slot, zero ? insn : definitions.get(reg(insn, r)));
+                        if ((value & 0xFFFFFFFFL) == SFCI_MAGIC)
+                        {
+                            magicSeen[0] = true;
+                            commandSlot = base + ":" + (mem[1] + r * width + 8);
+                        }
+                    }
+
+                    // Zero can be a stale memset, so only a non-zero id settles it this early.
+                    if (commandSlot != null && stored.containsKey(commandSlot))
+                    {
+                        if (stored.get(commandSlot)[0] != 0)
+                            return sfciResult(stored.get(commandSlot)[0], storedDefinitions.get(commandSlot));
+                        zeroCommand = sfciResult(0, storedDefinitions.get(commandSlot));
+                    }
+
+                    // A post-indexed base now means something else
+                    String text = insn.getDefaultOperandRepresentation(count);
+                    if (insn.getNumOperands() > count + 1 || (text != null && text.contains("!")))
+                        forgetRegister(base, constants, definitions, stored);
+                }
+            }
+            else if (d0 != null && !readsOperand0(mn))
+            {
+                forgetRegister(d0, constants, definitions, stored);
+            }
+
+            a = insn.getFallThrough();
+        }
+
+        if (commandSlot != null)
+            return zeroCommand;
+
+        if (depth < 2 && !magicSeen[0])
+        {
+            for (int i = 0; i < callees.size() && i < 6 && !magicSeen[0]; i++)
+            {
+                Decoded decoded = decodeSfciCommand(callees.get(i), depth + 1, visited, magicSeen);
+                if (decoded != null)
+                    return decoded;
+            }
+        }
+        return null;
+    }
+
+    private Decoded sfciResult(long command, Instruction site)
+    {
+        if (command < 0 || command > 0xFFFF || site == null)
+            return null;
+        return new Decoded(command, site.getAddress().getOffset(), instructionText(site));
+    }
+
+    private void forgetRegister(String register, Map<String, Long> constants, Map<String, Instruction> definitions,
+                                Map<String, long[]> stored)
+    {
+        if (register == null)
+            return;
+        constants.remove(register);
+        definitions.remove(register);
+        stored.keySet().removeIf(slot -> slot.startsWith(register + ":"));
+    }
+
+    /** A movk's {chunk, shift}, from Ghidra's rendering of it ("movk x9,#0x4943, LSL #16"). */
+    private long[] parseMovk(Instruction insn)
+    {
+        StringBuilder text = new StringBuilder();
+        for (int i = 1; i < insn.getNumOperands(); i++)
+            text.append(insn.getDefaultOperandRepresentation(i)).append(' ');
+        java.util.regex.Matcher m = MOVK_OPERANDS.matcher(text.toString());
+        if (!m.find())
+            return null;
+        long chunk = Long.decode(m.group(1));
+        long shift = m.group(2) != null ? Long.decode(m.group(2)) : 0;
+        return new long[] { chunk, shift };
     }
 
     /** Mnemonic + operands, e.g. "mov w4,#0x23" or "mov w2,wzr". */
@@ -789,7 +1535,8 @@ public class ServiceUsageTracer
             {
                 String mn = insn.getMnemonicString().toLowerCase();
                 String d0 = op(insn, 0);
-                if (mn.equals("adrp")) { Long im = imm(insn, 1); if (d0 != null && im != null) rc.put(d0, im); }
+                if (isDataPointerSign(mn)) continue;
+                if (isAddressLoad(mn)) { Long im = imm(insn, 1); if (d0 != null && im != null) rc.put(d0, im); }
                 else if (mn.equals("add"))
                 {
                     String s = op(insn, 1); Long im = imm(insn, 2);
@@ -873,6 +1620,9 @@ public class ServiceUsageTracer
         {
             String mn = insn.getMnemonicString().toLowerCase();
             if (mn.equals("ldur")) mn = "ldr";
+            mn = canonicalBranch(mn);
+            if (isDataPointerAuth(mn))
+                continue;
             String d0 = reg(insn, 0);
             if (mn.equals("adrp")) { Long im = imm(insn, 1); if (d0 != null && im != null) { gaddr.put(d0, im); taint.remove(d0); } }
             else if (mn.equals("add"))
@@ -900,6 +1650,7 @@ public class ServiceUsageTracer
                 if (m != null && taint.containsKey(m)) return taint.get(m);
                 for (int i = 0; i <= 18; i++) { taint.remove("x" + i); gaddr.remove("x" + i); }
             }
+            else if (mn.equals("bl") && isCfiCheckCall(insn)) { taint.remove("x9"); taint.remove("x10"); gaddr.remove("x9"); gaddr.remove("x10"); }
             else if (mn.equals("bl")) { for (int i = 0; i <= 18; i++) { taint.remove("x" + i); gaddr.remove("x" + i); } }
             else if (d0 != null && !readsOperand0(mn)) { gaddr.remove(d0); taint.remove(d0); }
         }
@@ -926,6 +1677,12 @@ public class ServiceUsageTracer
         }
         vtableValidationCache.put(vtableAddr, count);
         return count;
+    }
+
+    /** True if a {@code bl} only runs an outlined CFI check, which preserves everything but x9/x10. */
+    private boolean isCfiCheckCall(Instruction bl)
+    {
+        return bl.getFlows().length > 0 && cfiCheckVtables(bl.getFlows()[0]) != null;
     }
 
     // ---- low-level ----
