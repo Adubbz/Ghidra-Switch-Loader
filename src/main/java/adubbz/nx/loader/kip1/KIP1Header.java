@@ -11,7 +11,6 @@ import java.io.IOException;
 import adubbz.nx.common.InvalidMagicException;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class KIP1Header
 {
@@ -25,42 +24,38 @@ public class KIP1Header
     
     private KIP1SectionHeader[] sectionHeaders = new KIP1SectionHeader[6];
     
-    public KIP1Header(BinaryReader reader, int readerOffset)
+    public KIP1Header(BinaryReader reader, int readerOffset) throws IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
-        
-        reader.setPointerIndex(readerOffset);
-        this.readHeader(reader);
-        
-        // Restore the previous pointer index
-        reader.setPointerIndex(prevPointerIndex);
+        try
+        {
+            reader.setPointerIndex(readerOffset);
+            this.readHeader(reader);
+        }
+        finally
+        {
+            reader.setPointerIndex(prevPointerIndex);
+        }
     }
     
-    private void readHeader(BinaryReader reader)
+    private void readHeader(BinaryReader reader) throws IOException
     {
-        try 
+        this.magic = reader.readNextAsciiString(4);
+
+        if (!this.magic.equals("KIP1"))
+            throw new InvalidMagicException("KIP1");
+
+        this.name = reader.readNextAsciiString(12);
+        this.tid = reader.readNextLong();
+        this.processCategory = reader.readNextInt();
+        this.mainThreadPriority = reader.readNextByte();
+        this.defaultCpuCore = reader.readNextByte();
+        reader.readNextByte(); // Unused
+        this.flags = reader.readNextByte();
+
+        for (int i = 0; i < this.sectionHeaders.length; i++)
         {
-            this.magic = reader.readNextAsciiString(4);
-            
-            if (!this.magic.equals("KIP1"))
-                throw new InvalidMagicException("KIP1");
-            
-            this.name = reader.readNextAsciiString(12);
-            this.tid = reader.readNextLong();
-            this.processCategory = reader.readNextInt();
-            this.mainThreadPriority = reader.readNextByte();
-            this.defaultCpuCore = reader.readNextByte();
-            reader.readNextByte(); // Unused
-            this.flags = reader.readNextByte();
-            
-            for (int i = 0; i < this.sectionHeaders.length; i++)
-            {
-                this.sectionHeaders[i] = new KIP1SectionHeader(reader);
-            }
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read KIP1 header");
+            this.sectionHeaders[i] = new KIP1SectionHeader(reader);
         }
     }
     

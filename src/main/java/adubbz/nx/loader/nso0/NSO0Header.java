@@ -11,7 +11,6 @@ import java.io.IOException;
 import adubbz.nx.common.InvalidMagicException;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class NSO0Header 
 {
@@ -29,46 +28,42 @@ public class NSO0Header
     private long compressedRodataSize;
     private long compressedDataSize;
     
-    public NSO0Header(BinaryReader reader, int readerOffset)
+    public NSO0Header(BinaryReader reader, int readerOffset) throws IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
-        
-        reader.setPointerIndex(readerOffset);
-        this.readHeader(reader);
-        
-        // Restore the previous pointer index
-        reader.setPointerIndex(prevPointerIndex);
-    }
-    
-    private void readHeader(BinaryReader reader)
-    {
-        try 
+        try
         {
-            this.magic = reader.readNextAsciiString(4);
-            
-            if (!this.magic.equals("NSO0"))
-                throw new InvalidMagicException("NSO0");
-            
-            this.version = reader.readNextUnsignedInt();
-            reader.readNextUnsignedInt(); // Reserved
-            this.flags = reader.readNextUnsignedInt();
-            this.textHeader = new NSO0SectionHeader(reader);
-            this.moduleOffset = reader.readNextUnsignedInt();
-            this.rodataHeader = new NSO0SectionHeader(reader);
-            this.moduleFileSize = reader.readNextUnsignedInt();
-            this.dataHeader = new NSO0SectionHeader(reader);
-            this.bssSize = reader.readNextUnsignedInt();
-            this.buildId = reader.readNextByteArray(0x20);
-            this.compressedTextSize = reader.readNextUnsignedInt();
-            this.compressedRodataSize = reader.readNextUnsignedInt();
-            this.compressedDataSize = reader.readNextUnsignedInt();
-        } 
-        catch (IOException e) 
+            reader.setPointerIndex(readerOffset);
+            this.readHeader(reader);
+        }
+        finally
         {
-            Msg.error(this, "Failed to read NSO0 header");
+            reader.setPointerIndex(prevPointerIndex);
         }
     }
     
+    private void readHeader(BinaryReader reader) throws IOException
+    {
+        this.magic = reader.readNextAsciiString(4);
+
+        if (!this.magic.equals("NSO0"))
+            throw new InvalidMagicException("NSO0");
+
+        this.version = reader.readNextUnsignedInt();
+        reader.readNextUnsignedInt(); // Reserved
+        this.flags = reader.readNextUnsignedInt();
+        this.textHeader = new NSO0SectionHeader(reader);
+        this.moduleOffset = reader.readNextUnsignedInt();
+        this.rodataHeader = new NSO0SectionHeader(reader);
+        this.moduleFileSize = reader.readNextUnsignedInt();
+        this.dataHeader = new NSO0SectionHeader(reader);
+        this.bssSize = reader.readNextUnsignedInt();
+        this.buildId = reader.readNextByteArray(0x20);
+        this.compressedTextSize = reader.readNextUnsignedInt();
+        this.compressedRodataSize = reader.readNextUnsignedInt();
+        this.compressedDataSize = reader.readNextUnsignedInt();
+    }
+
     public NSO0SectionHeader getSectionHeader(NXOSectionType type)
     {
         return switch (type) {

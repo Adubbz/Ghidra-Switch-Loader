@@ -9,7 +9,6 @@ package adubbz.nx.loader.nso0;
 import java.io.IOException;
 
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class NSO0SectionHeader 
 {
@@ -17,23 +16,16 @@ public class NSO0SectionHeader
     private long memoryOffset;
     private long decompressedSize;
     
-    public NSO0SectionHeader(BinaryReader reader)
+    public NSO0SectionHeader(BinaryReader reader) throws IOException
     {
         this.readHeader(reader);
     }
     
-    private void readHeader(BinaryReader reader)
+    private void readHeader(BinaryReader reader) throws IOException
     {
-        try
-        {
-            this.fileOffset = reader.readNextUnsignedInt();
-            this.memoryOffset = reader.readNextUnsignedInt();
-            this.decompressedSize = reader.readNextUnsignedInt();
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read NSO0 section header");
-        }
+        this.fileOffset = reader.readNextUnsignedInt();
+        this.memoryOffset = reader.readNextUnsignedInt();
+        this.decompressedSize = reader.readNextUnsignedInt();
     }
     
     public long getFileOffset()

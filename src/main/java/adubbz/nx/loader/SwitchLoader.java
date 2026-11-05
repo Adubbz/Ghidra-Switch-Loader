@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.BiFunction;
 
 import adubbz.nx.loader.common.NXProgramBuilder;
 import adubbz.nx.loader.kip1.KIP1Adapter;
@@ -112,15 +111,21 @@ public class SwitchLoader extends BinaryLoader
         else
             return loadSpecs;
 
-        var adapter = this.binaryType.createAdapter(null, provider);
-        
-        if (adapter.isAarch32())
+        try
         {
-            loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(AARCH32_LANGUAGE_ID, new CompilerSpecID("default")), true));
+            var adapter = this.binaryType.createAdapter(null, provider);
+            if (adapter.isAarch32())
+            {
+                loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(AARCH32_LANGUAGE_ID, new CompilerSpecID("default")), true));
+            }
+            else
+            {
+                loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(AARCH64_LANGUAGE_ID, new CompilerSpecID("default")), true));
+            }
         }
-        else
+        catch (IOException e)
         {
-            loadSpecs.add(new LoadSpec(this, 0, new LanguageCompilerSpecPair(AARCH64_LANGUAGE_ID, new CompilerSpecID("default")), true));
+            Msg.warn(this, "Rejected malformed " + this.binaryType.name + " candidate: " + e.getMessage());
         }
 
         return loadSpecs;
@@ -202,17 +207,23 @@ public class SwitchLoader extends BinaryLoader
         KERNEL_800("Nintendo Switch Kernel 8.0.0+", KNXAdapter::new);
         
         public final String name;
-        private final BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc;
+        private final AdapterFactory adapterFunc;
         
-        BinaryType(String name, BiFunction<Program, ByteProvider, NXOAdapter> adapterFunc)
+        BinaryType(String name, AdapterFactory adapterFunc)
         {
             this.name = name;
             this.adapterFunc = adapterFunc;
         }
         
-        public NXOAdapter createAdapter(Program program, ByteProvider provider)
+        public NXOAdapter createAdapter(Program program, ByteProvider provider) throws IOException
         {
-            return adapterFunc.apply(program, provider);
+            return adapterFunc.create(program, provider);
+        }
+
+        @FunctionalInterface
+        private interface AdapterFactory
+        {
+            NXOAdapter create(Program program, ByteProvider provider) throws IOException;
         }
     }
 }

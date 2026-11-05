@@ -10,7 +10,6 @@ package adubbz.nx.loader.kip1;
 import java.io.IOException;
 
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class KIP1SectionHeader 
 {
@@ -19,24 +18,17 @@ public class KIP1SectionHeader
     private long compressedSize;
     private long attributes;
     
-    public KIP1SectionHeader(BinaryReader reader)
+    public KIP1SectionHeader(BinaryReader reader) throws IOException
     {
         this.readHeader(reader);
     }
     
-    private void readHeader(BinaryReader reader)
+    private void readHeader(BinaryReader reader) throws IOException
     {
-        try
-        {
-            this.outOffset = reader.readNextUnsignedInt();
-            this.decompressedSize = reader.readNextUnsignedInt();
-            this.compressedSize = reader.readNextUnsignedInt();
-            this.attributes = reader.readNextUnsignedInt();
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read KIP1 section header");
-        }
+        this.outOffset = reader.readNextUnsignedInt();
+        this.decompressedSize = reader.readNextUnsignedInt();
+        this.compressedSize = reader.readNextUnsignedInt();
+        this.attributes = reader.readNextUnsignedInt();
     }
     
     public long getOutOffset()

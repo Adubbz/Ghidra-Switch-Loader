@@ -11,7 +11,6 @@ import java.io.IOException;
 import adubbz.nx.common.InvalidMagicException;
 import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class NRO0Header 
 {
@@ -29,47 +28,43 @@ public class NRO0Header
     private NRO0SectionHeader dynstr;
     private NRO0SectionHeader dynsym;
 
-    public NRO0Header(BinaryReader reader, int readerOffset)
+    public NRO0Header(BinaryReader reader, int readerOffset) throws IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
-        
-        reader.setPointerIndex(readerOffset);
-        this.readHeader(reader);
-        
-        // Restore the previous pointer index
-        reader.setPointerIndex(prevPointerIndex);
+        try
+        {
+            reader.setPointerIndex(readerOffset);
+            this.readHeader(reader);
+        }
+        finally
+        {
+            reader.setPointerIndex(prevPointerIndex);
+        }
     }
 
-    private void readHeader(BinaryReader reader)
+    private void readHeader(BinaryReader reader) throws IOException
     {
-        try 
-        {
-            reader.readNextUnsignedInt(); // Reserved
-            this.mod0Offset = reader.readNextUnsignedInt();
-            reader.readNextLong(); // Padding
-            this.magic = reader.readNextAsciiString(4);
-            
-            if (!this.magic.equals("NRO0"))
-                throw new InvalidMagicException("NRO0");
-            
-            this.version = reader.readNextUnsignedInt();
-            this.size = reader.readNextUnsignedInt();
-            this.flags = reader.readNextUnsignedInt();
-            this.textHeader = new NRO0SectionHeader(reader);
-            this.rodataHeader = new NRO0SectionHeader(reader);
-            this.dataHeader = new NRO0SectionHeader(reader);
-            this.bssSize = reader.readNextUnsignedInt();
-            reader.readNextUnsignedInt(); // Reserved
-            this.buildId = reader.readNextByteArray(0x20);
-            reader.readNextUnsignedInt(); // Reserved
-            this.apiInfo = new NRO0SectionHeader(reader);
-            this.dynstr = new NRO0SectionHeader(reader);
-            this.dynsym = new NRO0SectionHeader(reader);
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read NRO0 header");
-        }
+        reader.readNextUnsignedInt(); // Reserved
+        this.mod0Offset = reader.readNextUnsignedInt();
+        reader.readNextLong(); // Padding
+        this.magic = reader.readNextAsciiString(4);
+
+        if (!this.magic.equals("NRO0"))
+            throw new InvalidMagicException("NRO0");
+
+        this.version = reader.readNextUnsignedInt();
+        this.size = reader.readNextUnsignedInt();
+        this.flags = reader.readNextUnsignedInt();
+        this.textHeader = new NRO0SectionHeader(reader);
+        this.rodataHeader = new NRO0SectionHeader(reader);
+        this.dataHeader = new NRO0SectionHeader(reader);
+        this.bssSize = reader.readNextUnsignedInt();
+        reader.readNextUnsignedInt(); // Reserved
+        this.buildId = reader.readNextByteArray(0x20);
+        reader.readNextUnsignedInt(); // Reserved
+        this.apiInfo = new NRO0SectionHeader(reader);
+        this.dynstr = new NRO0SectionHeader(reader);
+        this.dynsym = new NRO0SectionHeader(reader);
     }
 
     public NRO0SectionHeader getSectionHeader(NXOSectionType type)

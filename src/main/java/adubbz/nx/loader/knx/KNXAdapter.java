@@ -27,19 +27,10 @@ public class KNXAdapter extends MOD0Adapter
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
     
-    public KNXAdapter(Program program, ByteProvider fileProvider)
+    public KNXAdapter(Program program, ByteProvider fileProvider) throws IOException
     {
         super(program, fileProvider);
-        
-        try
-        {
-            this.read();
-        }
-        catch (IOException e)
-        {
-            Msg.error(this, "Failed to read KNX");
-            e.printStackTrace();
-        }
+        this.read();
     }
     
     private void read() throws IOException
@@ -59,7 +50,7 @@ public class KNXAdapter extends MOD0Adapter
         }
         
         if (this.fileReader.getPointerIndex() >= 0x2000)
-            throw new RuntimeException("Failed to find map offset");
+            throw new IOException("Failed to find map offset");
         
         long mapOffset = this.fileReader.getPointerIndex() - 0x34;
         this.map = new KNXMapHeader(this.fileReader, (int)mapOffset);

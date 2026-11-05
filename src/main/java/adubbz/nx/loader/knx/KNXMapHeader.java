@@ -9,7 +9,6 @@ package adubbz.nx.loader.knx;
 import java.io.IOException;
 
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class KNXMapHeader 
 {
@@ -26,38 +25,34 @@ public class KNXMapHeader
     private long initArrayOffset;
     private long initArrayEndOffset;
     
-    public KNXMapHeader(BinaryReader reader, int readerOffset)
+    public KNXMapHeader(BinaryReader reader, int readerOffset) throws IOException
     {
         long prevPointerIndex = reader.getPointerIndex();
-        
-        reader.setPointerIndex(readerOffset);
-        this.readHeader(reader);
-        
-        // Restore the previous pointer index
-        reader.setPointerIndex(prevPointerIndex);
+        try
+        {
+            reader.setPointerIndex(readerOffset);
+            this.readHeader(reader);
+        }
+        finally
+        {
+            reader.setPointerIndex(prevPointerIndex);
+        }
     }
 
-    private void readHeader(BinaryReader reader)
+    private void readHeader(BinaryReader reader) throws IOException
     {
-        try 
-        {
-            this.textOffset = reader.readNextUnsignedInt();
-            this.textEndOffset = reader.readNextUnsignedInt();
-            this.rodataOffset = reader.readNextUnsignedInt();
-            this.rodataEndOffset = reader.readNextUnsignedInt();
-            this.dataOffset = reader.readNextUnsignedInt();
-            this.dataEndOffset = reader.readNextUnsignedInt();
-            this.bssOffset = reader.readNextUnsignedInt();
-            this.bssEndOffset = reader.readNextUnsignedInt();
-            this.ini1Offset = reader.readNextUnsignedInt();
-            this.dynamicOffset = reader.readNextUnsignedInt();
-            this.initArrayOffset = reader.readNextUnsignedInt();
-            this.initArrayEndOffset = reader.readNextUnsignedInt();
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read KNX Map header");
-        }
+        this.textOffset = reader.readNextUnsignedInt();
+        this.textEndOffset = reader.readNextUnsignedInt();
+        this.rodataOffset = reader.readNextUnsignedInt();
+        this.rodataEndOffset = reader.readNextUnsignedInt();
+        this.dataOffset = reader.readNextUnsignedInt();
+        this.dataEndOffset = reader.readNextUnsignedInt();
+        this.bssOffset = reader.readNextUnsignedInt();
+        this.bssEndOffset = reader.readNextUnsignedInt();
+        this.ini1Offset = reader.readNextUnsignedInt();
+        this.dynamicOffset = reader.readNextUnsignedInt();
+        this.initArrayOffset = reader.readNextUnsignedInt();
+        this.initArrayEndOffset = reader.readNextUnsignedInt();
     }
     
     public long getTextFileOffset()

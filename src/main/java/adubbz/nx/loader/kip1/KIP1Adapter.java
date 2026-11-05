@@ -15,7 +15,6 @@ import adubbz.nx.util.ByteUtil;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.program.model.listing.Program;
-import ghidra.util.Msg;
 
 public class KIP1Adapter extends MOD0Adapter
 {
@@ -24,19 +23,10 @@ public class KIP1Adapter extends MOD0Adapter
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
     
-    public KIP1Adapter(Program program, ByteProvider fileProvider)
+    public KIP1Adapter(Program program, ByteProvider fileProvider) throws IOException
     {
         super(program, fileProvider);
-        
-        try
-        {
-            this.read();
-        }
-        catch (IOException e)
-        {
-            Msg.error(this, "Failed to read KIP1");
-            e.printStackTrace();
-        }
+        this.read();
     }
     
     private void read() throws IOException

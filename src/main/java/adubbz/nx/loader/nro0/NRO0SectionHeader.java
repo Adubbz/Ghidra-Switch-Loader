@@ -9,29 +9,21 @@ package adubbz.nx.loader.nro0;
 import java.io.IOException;
 
 import ghidra.app.util.bin.BinaryReader;
-import ghidra.util.Msg;
 
 public class NRO0SectionHeader 
 {
     private long fileOffset;
     private long size;
 
-    public NRO0SectionHeader(BinaryReader reader)
+    public NRO0SectionHeader(BinaryReader reader) throws IOException
     {
         this.readHeader(reader);
     }
 
-    private void readHeader(BinaryReader reader)
+    private void readHeader(BinaryReader reader) throws IOException
     {
-        try
-        {
-            this.fileOffset = reader.readNextUnsignedInt();
-            this.size = reader.readNextUnsignedInt();
-        } 
-        catch (IOException e) 
-        {
-            Msg.error(this, "Failed to read NRO0 section header");
-        }
+        this.fileOffset = reader.readNextUnsignedInt();
+        this.size = reader.readNextUnsignedInt();
     }
 
     public long getFileOffset()

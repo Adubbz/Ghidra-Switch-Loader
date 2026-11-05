@@ -14,7 +14,6 @@ import adubbz.nx.loader.nxo.NXOSectionType;
 import ghidra.app.util.bin.ByteArrayProvider;
 import ghidra.app.util.bin.ByteProvider;
 import ghidra.program.model.listing.Program;
-import ghidra.util.Msg;
 
 public class NRO0Adapter extends MOD0Adapter
 {
@@ -23,19 +22,10 @@ public class NRO0Adapter extends MOD0Adapter
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
     
-    public NRO0Adapter(Program program, ByteProvider fileProvider)
+    public NRO0Adapter(Program program, ByteProvider fileProvider) throws IOException
     {
         super(program, fileProvider);
-        
-        try
-        {
-            this.read();
-        }
-        catch (IOException e)
-        {
-            Msg.error(this, "Failed to read NRO0");
-            e.printStackTrace();
-        }
+        this.read();
     }
     
     private void read() throws IOException
