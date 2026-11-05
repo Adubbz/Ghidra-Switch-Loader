@@ -63,6 +63,17 @@ public class NXProgramBuilder
     protected MemoryBlockHelper memBlockHelper;
     private Disassembler mappingSymbolDisassembler;
     
+    // PLT entries are "adrp x16; ldr x17, [x16, #off]; add x16, x16, #off" followed by a branch.
+    // 20.0.0+ binaries use pointer authentication, branching with braa (modifier x16) instead of br.
+    private static final int BR_X17 = 0xD61F0220;
+    
+    // PAuth ABI dynamic relocations (Switch 2 applets). The runtime loader also signs the
+    // resulting pointer; Ghidra has no notion of signed pointers, so apply them unsigned.
+    private static final int R_AARCH64_AUTH_ABS64 = 0x244;
+    private static final int R_AARCH64_AUTH_RELATIVE = 0x411;
+    private static final int R_AARCH64_AUTH_GLOB_DAT = 0x412;
+    private static final int BRAA_X17_X16 = 0xD71F0A30;
+    
     protected List<PltEntry> pltEntries = new ArrayList<>();
     
     protected int undefSymbolCount;
@@ -133,9 +144,24 @@ public class NXProgramBuilder
             this.setupSymbolTable();
             
             // Create BSS. This needs to be done before the EXTERNAL block is created in setupImports
-            Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + adapter.getBssOffset());
-            Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + adapter.getBssSize()));
-            MemoryBlockUtils.createUninitializedBlock(this.program, false, ".bss", bssStartAddr, adapter.getBssSize(), "", null, true, true, false, new MessageLog());
+            long bssOffset = adapter.getBssOffset();
+            long bssSize = adapter.getBssSize();
+            long dataEnd = data.getOffset() + data.getSize();
+
+            // Some binaries store the start of .bss as zeroes at the end of .data. That part is
+            // already mapped by .data, so the uninitialized block only covers the remainder.
+            if (bssOffset < dataEnd)
+            {
+                bssSize -= Math.min(bssSize, dataEnd - bssOffset);
+                bssOffset = dataEnd;
+            }
+
+            if (bssSize > 0)
+            {
+                Address bssStartAddr = aSpace.getAddress(this.nxo.getBaseAddress() + bssOffset);
+                Msg.info(this, String.format("Created bss from 0x%X to 0x%X", bssStartAddr.getOffset(), bssStartAddr.getOffset() + bssSize));
+                MemoryBlockUtils.createUninitializedBlock(this.program, false, ".bss", bssStartAddr, bssSize, "", null, true, true, false, new MessageLog());
+            }
             
             this.setupImports(monitor);
             this.performRelocations();
@@ -245,7 +271,8 @@ public class NXProgramBuilder
             
             for (int i = last; i < adapter.getSection(NXOSectionType.TEXT).getSize(); i++)
             {
-                if (memoryReader.readInt(i) == 0xD61F0220)
+                int insn = memoryReader.readInt(i);
+                if (insn == BR_X17 || insn == BRAA_X17_X16)
                 {
                     pos = i;
                     break;
@@ -262,7 +289,7 @@ public class NXProgramBuilder
             long c = Integer.toUnsignedLong(memoryReader.readInt(off + 8));
             long d = Integer.toUnsignedLong(memoryReader.readInt(off + 12));
 
-            if (d == 0xD61F0220L && (a & 0x9f00001fL) == 0x90000010L && (b & 0xffe003ffL) == 0xf9400211L)
+            if (((int)d == BR_X17 || (int)d == BRAA_X17_X16) && (a & 0x9f00001fL) == 0x90000010L && (b & 0xffe003ffL) == 0xf9400211L)
             {
                 long base = off & ~0xFFFL;
                 long immhi = (a >> 5) & 0x7ffffL;
@@ -334,7 +361,9 @@ public class NXProgramBuilder
             }
             else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_GLOB_DAT.typeId() ||
                 reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_JUMP_SLOT.typeId() ||
-                reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_ABS64.typeId()) 
+                reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_ABS64.typeId() ||
+                reloc.r_type == R_AARCH64_AUTH_GLOB_DAT ||
+                reloc.r_type == R_AARCH64_AUTH_ABS64) 
             {
                 if (reloc.sym == null) 
                 {
@@ -350,7 +379,8 @@ public class NXProgramBuilder
                         gotNameLookup.put(reloc.offset, reloc.sym.getNameAsString());
                 }
             } 
-            else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_RELATIVE.typeId()) 
+            else if (reloc.r_type == AARCH64_ElfRelocationType.R_AARCH64_RELATIVE.typeId() ||
+                reloc.r_type == R_AARCH64_AUTH_RELATIVE) 
             {
                 program.getMemory().setLong(target, this.nxo.getBaseAddress() + reloc.addend);
             }
@@ -400,7 +430,7 @@ public class NXProgramBuilder
 
                         // Make sure the last instruction of this function is a branch.
                         // This check is also performed by AARCH64PltThunkAnalyzer.
-                        if (lastInstruction != null && lastInstruction.getMnemonicString().equals("br")) {
+                        if (lastInstruction != null && (lastInstruction.getMnemonicString().equals("br") || lastInstruction.getMnemonicString().equals("braa"))) {
                             try {
                                 program.getFunctionManager().createThunkFunction(name, null, addr, new AddressSet(addr, lastAddr), extLoc.getFunction(), SourceType.IMPORTED);
                                 lastInstruction.setFlowOverride(FlowOverride.CALL_RETURN);

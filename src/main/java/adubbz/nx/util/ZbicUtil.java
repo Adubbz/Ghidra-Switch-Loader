@@ -396,6 +396,15 @@ public final class ZbicUtil
                 }
                 bitStream += ((long) (symbol - start)) << bitCount;
                 bitCount += 2;
+                // Flush as upstream does, so up to 16 bits of repeat codes
+                // never pile up past the 64-bit accumulator or the final flush.
+                if (bitCount > 16)
+                {
+                    out.write((int) (bitStream & 0xFF));
+                    out.write((int) ((bitStream >>> 8) & 0xFF));
+                    bitStream >>>= 16;
+                    bitCount -= 16;
+                }
                 previousIs0 = 0;
             }
 
@@ -429,13 +438,10 @@ public final class ZbicUtil
         if (remaining != 1)
             throw new ZbicException("writeNCount remaining != 1 (got " + remaining + ")");
 
-        // Final flush: write enough bytes for the remaining bits (not a full
-        // 2-byte flush that would then truncate the whole buffer).
+        // Final flush: write enough bytes for the remaining bits.
         int finalBytes = (bitCount + 7) / 8;
-        if (finalBytes >= 1)
-            out.write((int) (bitStream & 0xFF));
-        if (finalBytes >= 2)
-            out.write((int) ((bitStream >>> 8) & 0xFF));
+        for (int i = 0; i < finalBytes; i++)
+            out.write((int) ((bitStream >>> (8 * i)) & 0xFF));
 
         return out.toByteArray();
     }

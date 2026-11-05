@@ -557,6 +557,15 @@ public class IPCEmulator
                 continue;
             }
 
+            // Clang CFI (Switch 2): outlined check stubs trap with "udf #0x8102" when a vtable or
+            // function pointer is outside its allowed range. The emulator's synthetic objects never
+            // are, so treat the check as passed and return from the leaf stub to its caller.
+            if (this.isCfiTrap(pc))
+            {
+                emuThread.overrideCounter(sLang.getDefaultSpace().getAddress(getRegisterLong("x30")));
+                continue;
+            }
+
             try
             {
                 // PcodeThread.stepInstruction() is the direct replacement for
@@ -854,6 +863,35 @@ public class IPCEmulator
             // kernel-side behavior here, so treat it as a trap boundary and continue.
         }
 
+        // Pointer authentication (only emitted when the ShowPAC context option is enabled).
+        // Signing and authenticating are modelled as identity: emulated pointers are never signed.
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] pacia(byte[] ptr, byte[] modifier) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] pacib(byte[] ptr, byte[] modifier) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] paciza(byte[] ptr) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] pacizb(byte[] ptr) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] AuthIA(byte[] ptr, byte[] modifier) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] AuthIB(byte[] ptr, byte[] modifier) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] AuthDA(byte[] ptr, byte[] modifier) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] AuthDB(byte[] ptr, byte[] modifier) { return ptr; }
+        
+        @PcodeUserop(functional = true, hasSideEffects = false)
+        public byte[] xpac(byte[] ptr, byte[] data) { return ptr; }
+
         @PcodeUserop
         public void ClearExclusiveLocal()
         {
@@ -973,6 +1011,22 @@ public class IPCEmulator
             // so the store always succeeds. Return 0 (= pass/success) per ARM semantics.
         //    return 0;
         //}
+    }
+
+    private static final int CFI_TRAP_INSTRUCTION = 0x00008102; // udf #0x8102
+
+    private boolean isCfiTrap(long pc)
+    {
+        try
+        {
+            Address addr = this.program.getAddressFactory().getDefaultAddressSpace().getAddress(pc);
+            return this.program.getMemory().getInt(addr) == CFI_TRAP_INSTRUCTION;
+        }
+        catch (Exception e)
+        {
+            // Synthetic HLE/heap addresses are not part of the program image.
+            return false;
+        }
     }
 
     /** Read a byte array from the emulator's default (RAM) address space. */
@@ -1136,7 +1190,7 @@ public class IPCEmulator
         {
             case "str": case "stp": case "strb": case "strh": case "stur": case "sturb": case "sturh":
             case "cbz": case "cbnz": case "tbz": case "tbnz": case "cmp": case "cmn": case "tst":
-            case "ccmp": case "ccmn": case "b": case "bl": case "blr": case "br": case "ret":
+            case "ccmp": case "ccmn": case "b": case "bl": case "blr": case "br": case "ret": case "retaa": case "retab":
                 return false;
             default:
                 return true;

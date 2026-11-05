@@ -27,7 +27,8 @@ public class NSO0Adapter extends MOD0Adapter
     
     protected ByteProvider memoryProvider;
     protected NXOSection[] sections;
-    
+    protected Long runtimeBase;
+
     public NSO0Adapter(Program program, ByteProvider fileProvider)
     {
         super(program, fileProvider);
@@ -46,6 +47,9 @@ public class NSO0Adapter extends MOD0Adapter
     private void read() throws IOException
     {
         this.nso0 = new NSO0Header(this.fileReader, 0x0);
+        
+        if (this.nso0.getModuleName() != null)
+            Msg.info(this, "Module name: " + this.nso0.getModuleName());
 
         LZ4Factory factory = LZ4Factory.fastestInstance();
         LZ4FastDecompressor lz4 = factory.fastDecompressor();
@@ -82,6 +86,17 @@ public class NSO0Adapter extends MOD0Adapter
             NXOSectionType.DATA, dataSize, isZbic, lz4);
         System.arraycopy(decompressedData, 0, full,
             Math.toIntExact(dataOffset), Math.toIntExact(dataSize));
+
+        RuntimeImageNormalizer.Result normalized = RuntimeImageNormalizer.normalize(full, textOffset,
+            rodataOffset, rodataSize, dataOffset, dataSize, this.nso0.getBssSize());
+
+        if (normalized != null)
+        {
+            this.runtimeBase = normalized.runtimeBase();
+            rodataSize = normalized.rodataSize();
+            dataOffset = normalized.dataOffset();
+            dataSize = normalized.dataSize();
+        }
 
         this.memoryProvider = new ByteArrayProvider(full);
 
@@ -129,6 +144,17 @@ public class NSO0Adapter extends MOD0Adapter
             lz4.decompress(compressed, out);
             return out;
         }
+    }
+
+    public String getModuleName()
+    {
+        return this.nso0.getModuleName();
+    }
+
+    // The base a runtime capture was normalized from, or null for a normal NSO.
+    public Long getRuntimeBase()
+    {
+        return this.runtimeBase;
     }
 
     @Override
