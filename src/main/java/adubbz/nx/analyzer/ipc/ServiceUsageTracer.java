@@ -132,6 +132,12 @@ public class ServiceUsageTracer
     private String rootInterfaceName;                          // the service's root interface (DB), for Open* out-interface lookup
     private long rootGlobal;                                   // BSS global caching the proxy (0 = none)
     private Set<Long> accessorEntries = new HashSet<>();
+    // Globals proven to hold this service's proxy (rootGlobal plus static holders the connector or its
+    // caller fills). A load from one of them types the loaded object as the root proxy.
+    private Set<Long> holderGlobals = new HashSet<>();
+    private final Map<Long, Optional<Long>> globalReturnCache = new HashMap<>();   // entry -> global it returns
+    private final Set<String> followedArgumentCalls = new HashSet<>();          // "callee+typed args" seen this decode
+    private Set<Long> holderGetters = new HashSet<>();                          // small holder readers returning the proxy
     // RTTI-resolved vtables. Fallback for SDK 22+ lazy-singleton/template proxies whose install the
     // structural scans can't reach -- used for both the root proxy and Open*-returned sub-interfaces.
     private Map<Long, String> rttiVtableToInterface = Collections.emptyMap();   // vtable addr -> iface fullname
@@ -270,7 +276,282 @@ public class ServiceUsageTracer
         accessorEntries.add(connector.getEntryPoint().getOffset());
         for (Function c : consumers)
             accessorEntries.add(c.getEntryPoint().getOffset());
+
+        addHolderConsumers(connector, consumers);
         return consumers;
+    }
+
+    /**
+     * libnn client libraries cache their proxy in a static holder: {@code Initialize()} stores the
+     * connector's output into a global, and the API functions next to it fetch it again, either with a
+     * direct load, through a small getter, or through a function-local static's accessor that returns
+     * the holder's address. Those functions are neither callers of the connector nor reachable from it,
+     * and without CFI checks nothing else types their calls, so add them as consumers here.
+     */
+    private void addHolderConsumers(Function connector, Set<Function> consumers)
+    {
+        holderGlobals = new HashSet<>();
+        holderGetters = new HashSet<>();
+        if (rootGlobal != 0)
+            holderGlobals.add(rootGlobal);
+
+        long connectorEntry = connector.getEntryPoint().getOffset();
+        Set<Long> holderAccessors = new HashSet<>();
+        scanHolderStores(connector, true, connectorEntry, holderGlobals, holderAccessors);
+        for (Function caller : callersUpTo(connector, 1))
+            scanHolderStores(caller, false, connectorEntry, holderGlobals, holderAccessors);
+
+        for (long g : holderGlobals)
+        {
+            if (g == rootGlobal)
+                continue;   // findConsumers already added its referencers
+            for (Reference r : refMgr.getReferencesTo(addr(g)))
+            {
+                if (!r.getReferenceType().isRead())
+                    continue;
+                Function reader = fnMgr.getFunctionContaining(r.getFromAddress());
+                if (reader == null || reader.equals(connector))
+                    continue;
+                consumers.add(reader);
+                // A small reader is a getter returning the proxy (in x0 or through x8): its callers
+                // receive the proxy as that call's result.
+                if (reader.getBody().getNumAddresses() <= 0x80)
+                {
+                    accessorEntries.add(reader.getEntryPoint().getOffset());
+                    holderGetters.add(reader.getEntryPoint().getOffset());
+                    consumers.addAll(callersUpTo(reader, 1));
+                }
+            }
+        }
+
+        // Callers of an accessor returning the holder's address load the proxy out of it.
+        for (long accessor : holderAccessors)
+        {
+            Function f = fnMgr.getFunctionAt(addr(accessor));
+            if (f != null)
+                consumers.addAll(callersUpTo(f, 1));
+        }
+    }
+
+    /**
+     * Records the globals {@code f} stores the service proxy into. In the connector itself, any 64-bit
+     * register that came out of a call (returned in x0 or written through an out-pointer) qualifies,
+     * since the connector's calls build the proxy. In a caller, only the connector's own output does.
+     * Stores into a holder whose address a callee returns also record that callee as a holder accessor.
+     */
+    private void scanHolderStores(Function f, boolean inConnector, long connectorEntry,
+                                  Set<Long> holders, Set<Long> accessors)
+    {
+        Map<String, Long> regGlobal = new HashMap<>();   // reg -> global address it holds
+        Map<String, Long> regAccessor = new HashMap<>(); // reg -> accessor that returned that global address
+        Map<String, Long> regSlot = new HashMap<>();     // reg -> stack slot address it holds
+        Set<String> regOut = new HashSet<>();            // regs holding a call's output
+        Set<Long> outSlots = new HashSet<>();            // stack slots a call wrote its output to
+        Set<Long> outGlobals = new HashSet<>();          // global addresses a call wrote its output to
+        long spDelta = 0;
+
+        int n = 0;
+        for (Instruction insn = firstInstruction(f);
+             insn != null && n++ < 4000 && f.getBody().contains(insn.getAddress());
+             insn = insn.getNext())
+        {
+            String mn = insn.getMnemonicString().toLowerCase();
+            if (mn.equals("ldur")) mn = "ldr"; else if (mn.equals("stur")) mn = "str";
+            mn = canonicalBranch(mn);
+            if (isDataPointerAuth(mn) || isDataPointerSign(mn))
+                continue;
+            String d0 = reg(insn, 0);
+
+            if (mn.equals("adrp") || mn.equals("adr"))
+            {
+                Long im = imm(insn, 1);
+                clearReg(d0, regGlobal, regAccessor, regSlot, regOut);
+                if (d0 != null && im != null) regGlobal.put(d0, im);
+            }
+            else if ((mn.equals("add") || mn.equals("sub")) && d0 != null)
+            {
+                String s = reg(insn, 1);
+                Long im = imm(insn, 2);
+                if ("x29".equals(d0) && "x31".equals(s) && mn.equals("add") && im != null)
+                {
+                    spDelta = im;
+                    continue;
+                }
+                Long g = s != null ? regGlobal.get(s) : null;
+                Long acc = s != null ? regAccessor.get(s) : null;
+                clearReg(d0, regGlobal, regAccessor, regSlot, regOut);
+                if (im == null)
+                    continue;
+                long delta = mn.equals("sub") ? -im : im;
+                if (g != null)
+                {
+                    regGlobal.put(d0, g + delta);
+                    if (acc != null) regAccessor.put(d0, acc);
+                }
+                else if ("x31".equals(s) || "x29".equals(s))
+                    regSlot.put(d0, ("x29".equals(s) ? spDelta : 0) + delta);
+            }
+            else if (mn.equals("mov") && d0 != null && reg(insn, 1) != null)
+            {
+                String s = reg(insn, 1);
+                Long g = regGlobal.get(s), acc = regAccessor.get(s), slot = regSlot.get(s);
+                boolean out = regOut.contains(s);
+                clearReg(d0, regGlobal, regAccessor, regSlot, regOut);
+                if ("x31".equals(s) || ("x29".equals(s) && !"x29".equals(d0)))
+                    regSlot.put(d0, "x29".equals(s) ? spDelta : 0);
+                if (g != null) regGlobal.put(d0, g);
+                if (acc != null) regAccessor.put(d0, acc);
+                if (slot != null) regSlot.put(d0, slot);
+                if (out) regOut.add(d0);
+            }
+            else if (mn.equals("bl"))
+            {
+                long target = insn.getFlows().length > 0 ? insn.getFlows()[0].getOffset() : 0;
+                boolean producesProxy = inConnector || target == connectorEntry;
+                if (producesProxy)
+                    for (int i = 1; i <= 8; i++)
+                    {
+                        String r = "x" + i;
+                        if (regSlot.containsKey(r)) outSlots.add(regSlot.get(r));
+                        if (regGlobal.containsKey(r)) outGlobals.add(regGlobal.get(r));
+                    }
+                for (int i = 0; i <= 18; i++)
+                    clearReg("x" + i, regGlobal, regAccessor, regSlot, regOut);
+                Long returned = target != 0 ? globalReturnedBy(target) : null;
+                if (returned != null)
+                {
+                    regGlobal.put("x0", returned);
+                    regAccessor.put("x0", target);
+                }
+                else if (producesProxy)
+                    regOut.add("x0");
+            }
+            else if (mn.equals("blr") || mn.equals("br") || mn.equals("b") || IPCAnalyzer.isReturnMnemonic(mn))
+            {
+                for (int i = 0; i <= 18; i++)
+                    clearReg("x" + i, regGlobal, regAccessor, regSlot, regOut);
+            }
+            else if ((mn.equals("ldr") || mn.equals("ldp")) && d0 != null)
+            {
+                long[] mem = memBaseOff(insn);
+                String base = mem != null ? "x" + mem[0] : null;
+                Long slot = null, g = null;
+                if (mem != null && (mem[0] == 31 || mem[0] == 29))
+                    slot = (mem[0] == 29 ? spDelta : 0) + mem[1];
+                else if (base != null && regGlobal.containsKey(base))
+                    g = regGlobal.get(base) + mem[1];
+                String[] dests = mn.equals("ldp") ? new String[] { d0, reg(insn, 1) } : new String[] { d0 };
+                for (int i = 0; i < dests.length; i++)
+                {
+                    if (dests[i] == null) continue;
+                    clearReg(dests[i], regGlobal, regAccessor, regSlot, regOut);
+                    long k = 8L * i;
+                    if ((slot != null && outSlots.contains(slot + k)) || (g != null && outGlobals.contains(g + k)))
+                        regOut.add(dests[i]);
+                }
+            }
+            else if (mn.equals("str") || mn.equals("stp"))
+            {
+                long[] mem = memBaseOff(insn);
+                if (mem == null)
+                    continue;
+                String base = "x" + mem[0];
+                String[] values = mn.equals("stp") ? new String[] { op(insn, 0), op(insn, 1) } : new String[] { op(insn, 0) };
+                for (int i = 0; i < values.length; i++)
+                {
+                    String v = values[i];
+                    if (v == null || !v.matches("x\\d+") || !regOut.contains(v))
+                        continue;
+                    long off = mem[1] + 8L * i;
+                    if (mem[0] == 31 || mem[0] == 29)
+                        outSlots.add((mem[0] == 29 ? spDelta : 0) + off);
+                    else if (regGlobal.containsKey(base) && isWritableData(regGlobal.get(base) + off))
+                    {
+                        holders.add(regGlobal.get(base) + off);
+                        if (regAccessor.containsKey(base))
+                            accessors.add(regAccessor.get(base));
+                    }
+                }
+            }
+            else if (d0 != null && !readsOperand0(mn))
+                clearReg(d0, regGlobal, regAccessor, regSlot, regOut);
+        }
+    }
+
+    private static void clearReg(String r, Map<String, Long> regGlobal, Map<String, Long> regAccessor,
+                                 Map<String, Long> regSlot, Set<String> regOut)
+    {
+        if (r == null) return;
+        regGlobal.remove(r); regAccessor.remove(r); regSlot.remove(r); regOut.remove(r);
+    }
+
+    private boolean isWritableData(long offset)
+    {
+        var block = memory.getBlock(addr(offset));
+        return block != null && block.isWrite() && !block.isExecute();
+    }
+
+    /**
+     * The global address a small function returns in x0 (a function-local static's accessor:
+     * {@code adrp x0,P; add x0,x0,#i; ret} on its fast path), or null. Every return whose x0 can be
+     * read back must agree.
+     */
+    private Long globalReturnedBy(long entry)
+    {
+        Optional<Long> cached = globalReturnCache.get(entry);
+        if (cached != null)
+            return cached.orElse(null);
+
+        Long result = null;
+        Function f = fnMgr.getFunctionAt(addr(entry));
+        if (f != null && f.getBody().getNumAddresses() <= 0x100)
+        {
+            boolean conflict = false;
+            for (Instruction insn = firstInstruction(f);
+                 insn != null && f.getBody().contains(insn.getAddress()) && !conflict;
+                 insn = insn.getNext())
+            {
+                if (!IPCAnalyzer.isReturnMnemonic(insn.getMnemonicString().toLowerCase()))
+                    continue;
+                Long value = x0AtReturn(insn);
+                if (value == null)
+                    continue;
+                if (result != null && !result.equals(value)) conflict = true;
+                result = value;
+            }
+            if (conflict || (result != null && !isWritableData(result)))
+                result = null;
+        }
+        globalReturnCache.put(entry, Optional.ofNullable(result));
+        return result;
+    }
+
+    /** x0 just before a return, when it is built as {@code adrp x0,P; add x0,x0,#i} (or {@code adr x0,P}). */
+    private Long x0AtReturn(Instruction ret)
+    {
+        Long add = null;
+        Instruction insn = ret.getPrevious();
+        for (int i = 0; i < 6 && insn != null; i++, insn = insn.getPrevious())
+        {
+            String mn = insn.getMnemonicString().toLowerCase();
+            if (!"x0".equals(reg(insn, 0)))
+            {
+                if (mn.startsWith("b") || mn.equals("ret") || mn.equals("retab") || mn.equals("retaa"))
+                    return null;   // a block boundary: x0 isn't straight-line here
+                continue;
+            }
+            if (mn.equals("add") && add == null && "x0".equals(reg(insn, 1)) && imm(insn, 2) != null)
+            {
+                add = imm(insn, 2);
+                continue;
+            }
+            if (mn.equals("adrp") && add != null && imm(insn, 1) != null)
+                return imm(insn, 1) + add;
+            if (mn.equals("adr") && add == null && imm(insn, 1) != null)
+                return imm(insn, 1);
+            return null;
+        }
+        return null;
     }
 
     /** Decode all consumer vcalls against a given root proxy vtable. */
@@ -282,6 +563,7 @@ public class ServiceUsageTracer
         rootInterfaceName = IPCDatabase.getInstance().getServiceInterface(serviceName, Collections.emptySet());
         offToCmdCache.clear();
         subVtCache.clear();
+        followedArgumentCalls.clear();
         ServiceUsage usage = new ServiceUsage(serviceName, rootVtable);
         // A connector can name several services (e.g. set:cal, set:fd and set:sys share one) or be a
         // server's registration, so its vtable isn't proven to be this service's proxy. Hardened builds
@@ -806,9 +1088,19 @@ public class ServiceUsageTracer
     // ---- per-consumer object type-flow ----
     private void analyzeConsumer(Function f, ServiceUsage usage)
     {
+        analyzeConsumer(f, usage, Collections.emptyMap(), 0);
+    }
+
+    /**
+     * Type-flow through one function. {@code argTags} pre-types argument registers when a caller passed
+     * a typed object in, so a helper that receives the proxy (rather than loading it) still has its
+     * calls typed. Followed {@link #MAX_ARG_DEPTH} levels deep.
+     */
+    private void analyzeConsumer(Function f, ServiceUsage usage, Map<String, String> argTags, int depth)
+    {
         long spDelta = 0;
         Map<String, Object[]> regKind = new HashMap<>();   // reg -> {"vtable",obj}|{"method",obj,off}
-        Map<String, String> regTag = new HashMap<>();      // reg -> addr:N | load:N | ret:@e|name | vt:@addr|openCmd | groot
+        Map<String, String> regTag = new HashMap<>(argTags); // reg -> addr:N | load:N | ret:@e|name | vt:@addr|openCmd | groot
         Map<Long, String> slotProv = new HashMap<>();      // slot -> writer tag
         Map<String, Long> regGlobal = new HashMap<>();     // reg -> global address it holds (adrp/add)
 
@@ -921,23 +1213,31 @@ public class ServiceUsageTracer
             else if (mn.equals("bl"))
             {
                 String ret = retTag(insn);
+                followTypedArguments(insn, regTag, slotProv, usage, depth);
                 String sret = regTag.get("x8");
                 if (sret != null && sret.startsWith("addr:"))
                     slotProv.put(Long.parseLong(sret.substring(5)), ret);
                 clearCallerSaved(regKind, regTag, regGlobal);
                 regTag.put("x0", ret);
+                // An accessor returning a proxy holder's address: the next `ldr xN,[x0]` is the proxy.
+                Long holder = insn.getFlows().length > 0 ? globalReturnedBy(insn.getFlows()[0].getOffset()) : null;
+                if (holder != null && holderGlobals.contains(holder))
+                    regGlobal.put("x0", holder);
             }
             else if (mn.equals("ldr") && d0 != null)
             {
                 long[] mem = memBaseOff(insn);
+                // Read the base's global before forgetting d0's: `ldr x0,[x0]` (a holder accessor's
+                // result) has d0 == base.
+                Long baseGlobal = mem != null ? regGlobal.get("x" + mem[0]) : null;
                 regGlobal.remove(d0);
-                if (mem != null && regGlobal.containsKey("x" + mem[0]))
+                if (baseGlobal != null)
                 {
                     // Loading the cached proxy pointer out of a global: d0 is the object (ROOT iff it
                     // is the service's proxy global), NOT a vtable.
-                    long g = regGlobal.get("x" + mem[0]) + mem[1];
+                    long g = baseGlobal + mem[1];
                     regKind.put(d0, null);
-                    if (rootGlobal != 0 && g == rootGlobal) regTag.put(d0, "groot"); else regTag.remove(d0);
+                    if (holderGlobals.contains(g)) regTag.put(d0, "groot"); else regTag.remove(d0);
                 }
                 else if (mem != null)
                 {
@@ -992,6 +1292,53 @@ public class ServiceUsageTracer
 
             insn = insn.getNext();
         }
+    }
+
+    private static final int MAX_ARG_DEPTH = 2;
+
+    /**
+     * Types worth forwarding into a callee: a load from a proxy holder, an Open*-returned sub-interface,
+     * or a proxy getter's result. A plain consumer's return value also types as root (for the
+     * accessor patterns) but is too weak to spread: it is usually just a Result.
+     */
+    private boolean isStrongObjectTag(String writer)
+    {
+        if (writer == null)
+            return false;
+        if (writer.equals("groot") || writer.startsWith("vt:@"))
+            return true;
+        if (writer.startsWith("ret:@"))
+        {
+            int bar = writer.indexOf('|');
+            try { return holderGetters.contains(Long.parseLong(writer.substring(5, bar < 0 ? writer.length() : bar), 16)); }
+            catch (Exception e) { return false; }
+        }
+        return false;
+    }
+
+    /**
+     * A direct call passing a typed proxy (root or sub-interface) in x0-x7: analyze the callee with
+     * those argument registers pre-typed. Each (callee, typed arguments) pair is followed once per
+     * decode.
+     */
+    private void followTypedArguments(Instruction bl, Map<String, String> regTag, Map<Long, String> slotProv,
+                                      ServiceUsage usage, int depth)
+    {
+        if (depth >= MAX_ARG_DEPTH || bl.getFlows().length == 0)
+            return;
+        Map<String, String> typed = new TreeMap<>();
+        for (int i = 0; i <= 7; i++)
+        {
+            String writer = rawWriter("x" + i, regTag, slotProv);
+            if (isStrongObjectTag(writer) && objVtable(writer) != 0)
+                typed.put("x" + i, writer);
+        }
+        if (typed.isEmpty())
+            return;
+        Function callee = fnMgr.getFunctionAt(bl.getFlows()[0]);
+        if (callee == null || !followedArgumentCalls.add(callee.getEntryPoint().getOffset() + typed.toString()))
+            return;
+        analyzeConsumer(callee, usage, typed, depth + 1);
     }
 
     /**
