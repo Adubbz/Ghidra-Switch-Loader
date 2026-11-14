@@ -51,7 +51,7 @@ jobs:
           ZIP_FILE=$(basename "$ZIP_PATH")
           ARTIFACT_NAME="${ZIP_FILE%.zip}"
           EXTRACT_DIR="dist/${ARTIFACT_NAME}"
-          # SwitchLoader-1.6.1-2a1cb05-Ghidra_12.1.2 -> 1.6.1-2a1cb05-Ghidra_12.1.2
+          # SwitchLoader-1.6.2-2a1cb05-Ghidra_12.2 -> 1.6.2-2a1cb05-Ghidra_12.2
           RELEASE_TAG="${ARTIFACT_NAME#SwitchLoader-}"
 
           mkdir -p "$EXTRACT_DIR"

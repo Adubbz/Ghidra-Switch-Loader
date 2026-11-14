@@ -198,9 +198,18 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    public String getName() 
+    public String getName()
     {
         return SWITCH_NAME;
+    }
+
+    @Override
+    public Collection<String> getAssociatedFileExtensions()
+    {
+        // Only used by Ghidra 12.2+ to build the import dialog's file filters; whether a file
+        // loads is decided by its magic in findSupportedLoadSpecs. ExeFS modules (main, sdk,
+        // subsdkN, rtld) usually have no extension and still show under "All Files".
+        return List.of("nso", "nso0", "nro", "nro0", "kip", "kip1");
     }
 
     private enum BinaryType

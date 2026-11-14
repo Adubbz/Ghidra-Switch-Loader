@@ -59,8 +59,8 @@ def ghidraUserDir = System.getProperty("user.home") + "/.ghidra/.${DISTRO_PREFIX
 dependencies {
     implementation 'commons-primitives:commons-primitives:1.0'
     implementation 'com.github.luben:zstd-jni:1.5.7-1'
-    implementation group: 'at.yawk.lz4', name: 'lz4-java', version: '1.10.2'
-    localDeps group: 'at.yawk.lz4', name: 'lz4-java', version: '1.10.2'
+    implementation 'at.yawk.lz4:lz4-java:1.10.2'
+    localDeps 'at.yawk.lz4:lz4-java:1.10.2'
 
     runtimeOnly fileTree(dir: ghidraInstallDir + '/Ghidra/patch', include: "**/*.jar")
     runtimeOnly fileTree(dir: ghidraInstallDir + '/Ghidra/Configurations', include: "**/*.jar")
@@ -103,9 +103,18 @@ eclipse {
     }
 }
 
+// Gradle 9 made archives reproducible by default, stamping every entry 1980-02-01. Ghidra
+// recompiles a bundled script only when its source is newer than the cached class in
+// <user settings>/osgi/compiled-bundles, so after an upgrade it kept running stale script
+// classes. Keep real timestamps in the extension zip and jars.
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = true
+}
+
 buildExtension {
     exclude 'gradle*'
     exclude '.github/**'
+    exclude '*.patch'
 
     archiveBaseName = "${project.name}-${project.version}-${getGitHash()}-Ghidra_${ghidra_version}".replace(' ', '_')
 }

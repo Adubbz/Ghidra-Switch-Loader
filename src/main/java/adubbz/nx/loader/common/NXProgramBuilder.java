@@ -307,7 +307,8 @@ public class NXProgramBuilder
             long pltEnd = this.pltEntries.get(this.pltEntries.size() - 1).off + 0x10;
             this.memBlockHelper.addSection(".plt", pltStart, pltStart, pltEnd - pltStart, true, false, false);
             // Disassemble the entire section, so AARCH64PltThunkAnalyzer works for functions within this binary.
-            disassembleRange(program.getImageBase().add(pltStart), program.getImageBase().add(pltEnd), program, monitor);
+            // pltEnd is exclusive; disassembleRange takes an inclusive end address.
+            disassembleRange(program.getImageBase().add(pltStart), program.getImageBase().add(pltEnd - 1), program, monitor);
         }
         else {
             // TODO: Find a way to locate the plt in CFI-enabled binaries.

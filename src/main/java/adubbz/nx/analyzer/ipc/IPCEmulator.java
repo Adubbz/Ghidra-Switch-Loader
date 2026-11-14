@@ -210,11 +210,13 @@ public class IPCEmulator
             {
                 // Compose in order: base library, then our Switch-specific stubs,
                 // then the functional-override library (ExclusiveMonitorPass, etc.).
-                // The last library wins for any name collision, so the override
-                // library must come last.
+                // override=true makes the last library win on a name collision; the
+                // single-arg compose() throws IllegalArgumentException instead, which
+                // would break emulator construction whenever Ghidra's AARCH64 library
+                // starts defining one of our stub names.
                 return super.createUseropLibrary()
-                    .compose(new SwitchPcodeUseropLibrary())
-                    .compose(new SwitchPcodeOverrideUseropLibrary());
+                    .compose(new SwitchPcodeUseropLibrary(), true)
+                    .compose(new SwitchPcodeOverrideUseropLibrary(), true);
             }
         };
         this.emuThread = this.emulator.newThread();
