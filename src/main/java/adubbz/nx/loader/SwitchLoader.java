@@ -140,6 +140,16 @@ public class SwitchLoader extends BinaryLoader
         var adapter = this.binaryType.createAdapter(program, provider);
         this.setDefaultAnalysisOptions(program);
         
+        if (adapter instanceof NSO0Adapter nso && nso.getModuleName() != null)
+        {
+            program.getOptions(Program.PROGRAM_INFO).setString("Module Name", nso.getModuleName());
+        }
+
+        if (adapter instanceof NSO0Adapter nso && nso.getRuntimeBase() != null)
+        {
+            program.getOptions(Program.PROGRAM_INFO).setString("Normalized Runtime Image", String.format("base 0x%X", nso.getRuntimeBase()));
+        }
+        
         // Set the base address
         try 
         {
@@ -188,9 +198,18 @@ public class SwitchLoader extends BinaryLoader
     }
 
     @Override
-    public String getName() 
+    public String getName()
     {
         return SWITCH_NAME;
+    }
+
+    @Override
+    public Collection<String> getAssociatedFileExtensions()
+    {
+        // Only used by Ghidra 12.2+ to build the import dialog's file filters; whether a file
+        // loads is decided by its magic in findSupportedLoadSpecs. ExeFS modules (main, sdk,
+        // subsdkN, rtld) usually have no extension and still show under "All Files".
+        return List.of("nso", "nso0", "nro", "nro0", "kip", "kip1");
     }
 
     private enum BinaryType
