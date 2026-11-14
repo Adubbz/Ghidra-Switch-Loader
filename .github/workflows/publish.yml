@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghidra: [ "12.1.2" ]
+        ghidra: [ "12.2" ]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,7 +27,9 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: "temurin"
-          java-version: "21"
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v3
 
       - name: Setup Ghidra ${{ matrix.ghidra }}
         uses: antoniovazquezblanco/setup-ghidra@v2.3.0
