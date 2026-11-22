@@ -36,15 +36,14 @@ else {
 
 def getGitHash = {
     def stdout = new ByteArrayOutputStream()
-    exec {
+    def provider = providers.exec {
         if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
             commandLine 'cmd', '/c', 'git', 'rev-parse', '--short', 'HEAD'
         } else {
             commandLine 'git', 'rev-parse', '--short', 'HEAD'
         }
-        standardOutput = stdout
     }
-    return stdout.toString().trim()
+    return provider.standardOutput.asText.get().trim()
 }
 
 repositories {
@@ -61,8 +60,8 @@ def ghidraUserDir = System.getProperty("user.home") + "/.ghidra/.${DISTRO_PREFIX
 dependencies {
     implementation 'commons-primitives:commons-primitives:1.0'
     implementation 'com.github.luben:zstd-jni:1.5.7-1'
-    implementation group: 'at.yawk.lz4', name: 'lz4-java', version: '1.10.2'
-    localDeps group: 'at.yawk.lz4', name: 'lz4-java', version: '1.10.2'
+    implementation "at.yawk.lz4:lz4-java:1.10.2"
+    localDeps "at.yawk.lz4:lz4-java:1.10.2"
 
     runtimeOnly fileTree(dir: ghidraInstallDir + '/Ghidra/patch', include: "**/*.jar")
     runtimeOnly fileTree(dir: ghidraInstallDir + '/Ghidra/Configurations', include: "**/*.jar")
